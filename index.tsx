@@ -17,7 +17,10 @@ import {
   Zap,
   Activity,
   RotateCcw,
-  History
+  History,
+  FileDown,
+  FileUp,
+  AlertCircle
 } from 'lucide-react';
 
 /** --- TYPES --- **/
@@ -44,6 +47,7 @@ interface SavedRecord {
   egdValue?: string;
   points: GeoPoint[];
   pivots?: GeoPoint[];
+  isImported?: boolean;
 }
 
 /** --- UTILITIES --- **/
@@ -73,79 +77,8 @@ const calculateArea = (points: GeoPoint[]): number => {
   return Math.abs(area) / 2;
 };
 
-const exportToKML = (records: SavedRecord[]) => {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const fileName = `golf_export_${timestamp}.kml`;
-  const kmlTitle = `Exported from Scottish Golf Course Rating Toolkit - ${fileName}`;
-
-  let kml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>${kmlTitle}</name>
-    <Style id="trackStyle">
-      <LineStyle><color>ff0000ff</color><width>4</width></LineStyle>
-    </Style>
-    <Style id="greenStyle">
-      <LineStyle><color>ff00ff00</color><width>4</width></LineStyle>
-      <PolyStyle><color>4d00ff00</color></PolyStyle>
-    </Style>
-    <Style id="bunkerStyle">
-      <LineStyle><color>ff00ffff</color><width>6</width></LineStyle>
-    </Style>
-    <Style id="pivotStyle">
-      <IconStyle><scale>0.5</scale></IconStyle>
-    </Style>`;
-
-  records.forEach(rec => {
-    const description = `Type: ${rec.type}\nValue: ${rec.primaryValue}\nSecondary: ${rec.secondaryValue || 'N/A'}\nEGD: ${rec.egdValue || 'N/A'}`;
-    
-    if (rec.type === 'Track') {
-      const coords = rec.points.map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
-      kml += `
-    <Placemark>
-      <name>Track - ${rec.primaryValue}</name>
-      <description>${description}</description>
-      <styleUrl>#trackStyle</styleUrl>
-      <LineString><coordinates>${coords}</coordinates></LineString>
-    </Placemark>`;
-      
-      rec.pivots?.forEach((pv, idx) => {
-        kml += `
-    <Placemark>
-      <name>Pivot ${idx + 1}</name>
-      <styleUrl>#pivotStyle</styleUrl>
-      <Point><coordinates>${pv.lng},${pv.lat},${pv.alt || 0}</coordinates></Point>
-    </Placemark>`;
-      });
-    } else {
-      for (let i = 0; i < rec.points.length; i++) {
-        const p1 = rec.points[i];
-        const p2 = rec.points[(i + 1) % rec.points.length];
-        const style = p2.type === 'bunker' ? '#bunkerStyle' : '#greenStyle';
-        kml += `
-    <Placemark>
-      <name>Green Segment ${i}</name>
-      <description>${description}</description>
-      <styleUrl>${style}</styleUrl>
-      <LineString>
-        <coordinates>${p1.lng},${p1.lat},${p1.alt || 0} ${p2.lng},${p2.lat},${p2.alt || 0}</coordinates>
-      </LineString>
-    </Placemark>`;
-      }
-    }
-  });
-
-  kml += `\n  </Document>\n</kml>`;
-  const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  a.click();
-};
-
-const analyzeGreenShape = (points: GeoPoint[]) => {
-  if (points.length < 3) return null;
+const getBasicEGD = (points: GeoPoint[]) => {
+  if (points.length < 2) return null;
   let maxD = 0;
   let pA = points[0], pB = points[0];
   for (let i = 0; i < points.length; i++) {
@@ -158,8 +91,7 @@ const analyzeGreenShape = (points: GeoPoint[]) => {
   const latRef = pA.lat * Math.PI / 180;
   const xA = pA.lng * Math.PI / 180 * R * Math.cos(latRef), yA = pA.lat * Math.PI / 180 * R;
   const xB = pB.lng * Math.PI / 180 * R * Math.cos(latRef), yB = pB.lat * Math.PI / 180 * R;
-  const dx = xB - xA;
-  const dy = yB - yA;
+  const dx = xB - xA; const dy = yB - yA;
   const mag = Math.sqrt(dx * dx + dy * dy);
   let side1 = 0, side2 = 0;
   let pC = points[0], pD = points[0];
@@ -178,10 +110,39 @@ const analyzeGreenShape = (points: GeoPoint[]) => {
   if (ratio >= 3) egd = (3 * W_yds + L_yds) / 4;
   else if (ratio >= 2) egd = (2 * W_yds + L_yds) / 3;
   else egd = (L_yds + W_yds) / 2;
+  return { egd: Math.round(egd * 10) / 10, L: L_yds, W: W_yds, ratio, pA, pB, pC, pD };
+};
+
+const analyzeGreenShape = (points: GeoPoint[]) => {
+  if (points.length < 3) return null;
+  const basic = getBasicEGD(points);
+  if (!basic) return null;
+
   const polyArea = calculateArea(points);
-  const bboxArea = (maxD * maxW);
-  const isL = (polyArea / bboxArea) < 0.62 && points.length > 8;
-  return { egd: Math.round(egd * 10) / 10, length: L_yds, width: W_yds, ratio, isL, pA, pB, pC, pD };
+  const boundingBoxArea = (basic.L * basic.W) / 1.196; 
+  const fullness = polyArea / boundingBoxArea;
+  
+  // Refined L-Shape Detection: if Area is < 62% of bounding box, it's likely non-convex
+  const isLShape = fullness < 0.62 && points.length > 6;
+
+  if (isLShape) {
+    const half = Math.floor(points.length / 2);
+    const seg1 = points.slice(0, half + 1);
+    const seg2 = points.slice(half);
+    const egd1 = getBasicEGD(seg1);
+    const egd2 = getBasicEGD(seg2);
+    
+    return {
+      ...basic,
+      isLShape: true,
+      egd: basic.egd, 
+      egd2: egd2?.egd || basic.egd,
+      egd1: egd1?.egd,
+      pA2: egd2?.pA, pB2: egd2?.pB
+    };
+  }
+
+  return { ...basic, isLShape: false };
 };
 
 const formatDist = (m: number, u: UnitSystem) => (m * (u === 'Metres' ? 1 : 1.09361)).toFixed(1);
@@ -274,6 +235,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<SavedRecord[]>([]);
   const [viewingRecord, setViewingRecord] = useState<SavedRecord | null>(null);
   const [showManual, setShowManual] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [trkActive, setTrkActive] = useState(false);
   const [trkStart, setTrkStart] = useState<GeoPoint | null>(null);
@@ -309,6 +271,73 @@ const App: React.FC = () => {
     localStorage.setItem('golf_pro_caddy_final', JSON.stringify(updated));
   }, [history]);
 
+  const handleKMLImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(text, 'text/xml');
+      const coordTags = xml.getElementsByTagName('coordinates');
+      
+      if (coordTags.length === 0) {
+        alert("No coordinates found in KML");
+        return;
+      }
+
+      let allPoints: GeoPoint[] = [];
+      for(let i=0; i<coordTags.length; i++) {
+        const raw = coordTags[i].textContent?.trim() || "";
+        const lines = raw.split(/\s+/);
+        lines.forEach(l => {
+          const parts = l.split(',');
+          if (parts.length >= 2) {
+            allPoints.push({
+              lng: parseFloat(parts[0]),
+              lat: parseFloat(parts[1]),
+              alt: parts[2] ? parseFloat(parts[2]) : null,
+              accuracy: 0,
+              altAccuracy: 0,
+              timestamp: Date.now()
+            });
+          }
+        });
+      }
+
+      if (allPoints.length < 2) return;
+
+      const isLoop = calculateDistance(allPoints[0], allPoints[allPoints.length - 1]) < 8.0 || allPoints.length > 20;
+      
+      if (isLoop) {
+        const shape = analyzeGreenShape(allPoints);
+        // FIX: Safely access egd2 on union type
+        const egdStr = shape && 'isLShape' in shape && shape.isLShape && 'egd2' in shape ? `${shape.egd} / ${shape.egd2} yd` : `${shape?.egd} yd`;
+        saveRecord({
+          type: 'Green',
+          primaryValue: Math.round(calculateArea(allPoints) * 1.196) + 'yd²',
+          secondaryValue: 'Bunker: 0%',
+          egdValue: egdStr,
+          points: allPoints,
+          isImported: true
+        });
+      } else {
+        let total = 0;
+        for(let i=0; i<allPoints.length-1; i++) total += calculateDistance(allPoints[i], allPoints[i+1]);
+        saveRecord({
+          type: 'Track',
+          primaryValue: formatDist(total, 'Yards') + 'yd',
+          secondaryValue: 'Elev: 0.0ft',
+          points: allPoints,
+          isImported: true
+        });
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const toggleFontSize = () => {
     setFontSizeMode(current => {
       if (current === 'Small') return 'Medium';
@@ -327,30 +356,34 @@ const App: React.FC = () => {
     }
     if (mapCompleted || viewingRecord) perimeter += calculateDistance(pts[pts.length-1], pts[0]);
     const shape = (pts.length >= 3 && (mapCompleted || viewingRecord)) ? analyzeGreenShape(pts) : null;
+    
     return { 
       area: calculateArea(pts), 
       perimeter, 
       bunkerPct: perimeter > 0 ? Math.round((bunkerLength / perimeter) * 100) : 0, 
       egd: shape?.egd, 
-      length: shape?.length, 
-      width: shape?.width, 
-      ratio: shape?.ratio, 
-      isL: shape?.isL, 
-      pA: shape?.pA, 
-      pB: shape?.pB, 
-      pC: shape?.pC, 
-      pD: shape?.pD 
+      egd2: (shape && 'egd2' in shape) ? (shape as any).egd2 : undefined,
+      isLShape: shape?.isLShape,
+      length: shape?.L, 
+      width: shape?.W,
+      ratio: shape?.ratio,
+      pA: shape?.pA, pB: shape?.pB,
+      pC: shape?.pC, pD: shape?.pD,
+      pA2: (shape && 'pA2' in shape) ? (shape as any).pA2 : undefined, 
+      pB2: (shape && 'pB2' in shape) ? (shape as any).pB2 : undefined
     };
   }, [mapPoints, mapCompleted, viewingRecord]);
 
   const handleFinalizeGreen = useCallback(() => {
     if (mapPoints.length < 3) return;
     const shape = analyzeGreenShape(mapPoints);
+    // FIX: Safely access egd2 on union type
+    const egdStr = shape && 'isLShape' in shape && shape.isLShape && 'egd2' in shape ? `${shape.egd} / ${shape.egd2} yd` : `${shape?.egd} yd`;
     saveRecord({ 
       type: 'Green', 
       primaryValue: Math.round(calculateArea(mapPoints) * (units === 'Yards' ? 1.196 : 1)) + (units === 'Yards' ? 'yd²' : 'm²'), 
       secondaryValue: `Bunker: ${greenAnalysis?.bunkerPct}%`, 
-      egdValue: (shape?.egd || '0') + 'yd', 
+      egdValue: egdStr,
       points: mapPoints 
     });
     setMapActive(false); 
@@ -397,7 +430,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full w-full bg-[#020617] text-white overflow-hidden absolute inset-0 select-none">
-      <div className="h-[env(safe-area-inset-top)] bg-[#0f172a]"></div>
+      <div className="h-[env(safe-area-inset-top)] bg-[#0f172a] shrink-0"></div>
       
       {showManual && (
         <div className="fixed inset-0 z-[3000] flex flex-col bg-[#020617] p-6 animate-in slide-in-from-bottom duration-300">
@@ -418,7 +451,7 @@ const App: React.FC = () => {
           <div className={`flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10 text-white pr-2 ${getManualFontSizeClass()}`}>
              <section><h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Zap size={14} /> Quick Start</h3><p className="font-medium opacity-80 leading-relaxed">Ensure 'High Accuracy' location is enabled. For best results, keep the app active and in-hand while walking.</p></section>
              <section><h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Navigation2 size={14} /> Distance Tracker</h3><p className="font-medium opacity-80 leading-relaxed">Tap 'Start' to track. Use 'Pivot' for dog-legs. Total distance includes all pivot stages.</p></section>
-             <section><h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Target size={14} /> Green Mapper</h3><p className="font-medium opacity-80 leading-relaxed">Walk green edge. Tool calculates Area, Perimeter, and EGD.</p></section>
+             <section><h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Target size={14} /> Green Mapper</h3><p className="font-medium opacity-80 leading-relaxed">Walk green edge. Tool calculates Area, Perimeter, and EGD. L-shaped greens are split into two surfaces.</p></section>
           </div>
         </div>
       )}
@@ -435,10 +468,23 @@ const App: React.FC = () => {
 
       {view === 'landing' ? (
         <div className="flex-1 flex flex-col p-6 overflow-y-auto no-scrollbar">
-          <header className="mb-10 mt-6 text-center">
-            <h1 className="text-4xl font-black tracking-tighter" style={{ color: '#2563EB' }}>Scottish Golf</h1>
+          <header className="mb-8 mt-6 flex flex-col items-center">
+            <div className="flex items-center gap-2 justify-center w-full relative">
+              <h1 className="text-4xl font-black tracking-tighter" style={{ color: '#2563EB' }}>Scottish Golf</h1>
+              <div className="absolute right-0 flex gap-2">
+                <input type="file" ref={fileInputRef} onChange={handleKMLImport} accept=".kml" className="hidden" />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-10 h-10 bg-slate-900 rounded-full flex items-center justify-center border border-white/10 text-blue-400 shadow-lg active:scale-95 transition-transform"
+                  title="Import KML"
+                >
+                  <FileUp size={18} />
+                </button>
+              </div>
+            </div>
             <p className="text-white text-[9px] font-black tracking-[0.4em] uppercase mt-2">Course Rating Toolkit ALPHA</p>
           </header>
+
           <div className="flex flex-col gap-4">
             <button onClick={() => { setView('track'); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors">
               <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-600/30"><Navigation2 size={28} /></div>
@@ -456,13 +502,16 @@ const App: React.FC = () => {
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-3 px-2">
                   <span className="text-[9px] font-black tracking-[0.2em] text-slate-500 uppercase">History</span>
-                  <button onClick={() => exportToKML(history)} className="text-blue-400 text-[8px] font-black uppercase">Export KML</button>
+                  <button onClick={() => { if(confirm("Clear all history?")) { setHistory([]); localStorage.removeItem('golf_pro_caddy_final'); } }} className="text-red-500/50 text-[8px] font-black uppercase">Clear All</button>
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
                   {history.map(item => (
                     <div key={item.id} className="relative group shrink-0">
-                      <button onClick={() => { setViewingRecord(item); setView(item.type === 'Track' ? 'track' : 'green'); }} className="bg-slate-900 border border-white/10 px-5 py-4 rounded-2xl flex flex-col min-w-[170px] text-left shadow-lg">
-                        <span className="text-[7px] font-black text-slate-500 uppercase">{item.type}</span>
+                      <button onClick={() => { setViewingRecord(item); setView(item.type === 'Track' ? 'track' : 'green'); }} className={`bg-slate-900 border border-white/10 px-5 py-4 rounded-2xl flex flex-col min-w-[170px] text-left shadow-lg ${item.isImported ? 'border-blue-500/30' : ''}`}>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-[7px] font-black text-slate-500 uppercase">{item.type}</span>
+                          {item.isImported && <FileDown size={10} className="text-blue-500" />}
+                        </div>
                         <span className="text-lg font-black text-white">{item.primaryValue}</span>
                         <span className="text-[10px] font-bold text-slate-400">{item.egdValue || item.secondaryValue}</span>
                       </button>
@@ -528,12 +577,14 @@ const App: React.FC = () => {
                             const pts = viewingRecord?.points || mapPoints;
                             const first = pts[0];
                             const last = pts[pts.length - 1];
-                            return <Polyline positions={[[last.lat, last.lng], [first.lat, first.lng]]} color={last.type === 'bunker' ? '#facc15' : '#10b981'} weight={last.type === 'bunker' ? 7 : 5} />;
+                            return <Polyline positions={[[last.lat, last.lng], [first.lat, first.lng]]} color={last.type === 'bunker' ? '#facc15' : '#10b981'} weight={last.type === 'bunker' ? 7 : 5} dashArray="10, 10" />;
                           })()}
                           <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.2} weight={0} />
-                          {/* Contrasting Diameter Lines (Cyan) */}
                           {greenAnalysis?.pA && greenAnalysis?.pB && (
                             <Polyline positions={[[greenAnalysis.pA.lat, greenAnalysis.pA.lng], [greenAnalysis.pB.lat, greenAnalysis.pB.lng]]} color="#22d3ee" weight={2.5} dashArray="8, 8" opacity={0.8} />
+                          )}
+                          {greenAnalysis?.isLShape && greenAnalysis?.pA2 && greenAnalysis?.pB2 && (
+                            <Polyline positions={[[greenAnalysis.pA2.lat, greenAnalysis.pA2.lng], [greenAnalysis.pB2.lat, greenAnalysis.pB2.lng]]} color="#22d3ee" weight={2} dashArray="4, 4" opacity={0.6} />
                           )}
                           {greenAnalysis?.pC && greenAnalysis?.pD && (
                             <Polyline positions={[[greenAnalysis.pC.lat, greenAnalysis.pC.lng], [greenAnalysis.pD.lat, greenAnalysis.pD.lng]]} color="#22d3ee" weight={2.5} dashArray="8, 8" opacity={0.8} />
@@ -602,21 +653,36 @@ const App: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
                             <span className="block text-[7px] font-black text-blue-400 uppercase tracking-widest mb-1">Effective Diameter (EGD)</span>
-                            <div className="text-5xl font-black text-yellow-400 leading-none">
-                              {viewingRecord?.egdValue?.replace('yd', '') || greenAnalysis.egd}
-                              <span className="text-[14px] font-black ml-1.5 opacity-40">YD</span>
+                            <div className="flex items-baseline gap-2">
+                              <div className="text-5xl font-black text-yellow-400 leading-none">
+                                {greenAnalysis.egd}
+                                <span className="text-[14px] font-black ml-1.5 opacity-40 uppercase">YD</span>
+                              </div>
+                              {greenAnalysis.isLShape && (
+                                <>
+                                  <span className="text-2xl font-black text-white/20">/</span>
+                                  <div className="text-4xl font-black text-yellow-400/80 leading-none">
+                                    {greenAnalysis.egd2}
+                                    <span className="text-[10px] font-black ml-1 opacity-40 uppercase">YD</span>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
-                          {greenAnalysis.isL && <div className="bg-amber-500 text-[8px] font-black text-black px-3 py-1 rounded-full shadow-lg h-fit uppercase">L-SHAPE</div>}
+                          {greenAnalysis.isLShape && (
+                            <div className="bg-blue-600 text-[8px] font-black text-white px-3 py-1 rounded-full shadow-lg h-fit uppercase flex items-center gap-1 shrink-0">
+                              <RotateCcw size={10} /> DOG-LEG / L-SHAPE
+                            </div>
+                          )}
                         </div>
                         <div className="grid grid-cols-3 border-t border-white/10 pt-3 gap-2">
                           <div className="flex flex-col">
-                            <span className="text-[8px] font-black text-white/50 uppercase leading-none mb-1.5">W</span>
-                            <span className="text-sm font-black text-white tabular-nums leading-none">{greenAnalysis.width?.toFixed(1)}</span>
+                            <span className="text-[8px] font-black text-white/50 uppercase leading-none mb-1.5">Max Span</span>
+                            <span className="text-sm font-black text-white tabular-nums leading-none">{greenAnalysis.length?.toFixed(1)}</span>
                           </div>
                           <div className="flex flex-col border-l border-white/10 pl-2">
-                            <span className="text-[8px] font-black text-white/50 uppercase leading-none mb-1.5">L</span>
-                            <span className="text-sm font-black text-white tabular-nums leading-none">{greenAnalysis.length?.toFixed(1)}</span>
+                            <span className="text-[8px] font-black text-white/50 uppercase leading-none mb-1.5">Max Width</span>
+                            <span className="text-sm font-black text-white tabular-nums leading-none">{greenAnalysis.width?.toFixed(1)}</span>
                           </div>
                           <div className="flex flex-col border-l border-white/10 pl-2">
                             <span className="text-[8px] font-black text-blue-400 uppercase leading-none mb-1.5">Ratio</span>
