@@ -92,7 +92,6 @@ const exportToKML = (records: SavedRecord[]) => {
   a.click();
 };
 
-/** EGD CALCULATION LOGIC **/
 const analyzeGreenShape = (points: GeoPoint[]) => {
   if (points.length < 3) return null;
   let maxD = 0;
@@ -107,18 +106,19 @@ const analyzeGreenShape = (points: GeoPoint[]) => {
   const latRef = pA.lat * Math.PI / 180;
   const xA = pA.lng * Math.PI / 180 * R * Math.cos(latRef), yA = pA.lat * Math.PI / 180 * R;
   const xB = pB.lng * Math.PI / 180 * R * Math.cos(latRef), yB = pB.lat * Math.PI / 180 * R;
-  const dx = xB - xA; const dy = yB - yA;
+  const dx = xB - xA;
+  const dy = yB - yA;
   const mag = Math.sqrt(dx * dx + dy * dy);
   let side1 = 0, side2 = 0;
   let pC = points[0], pD = points[0];
   points.forEach(p => {
     const px = p.lng * Math.PI / 180 * R * Math.cos(latRef), py = p.lat * Math.PI / 180 * R;
-    const dist = Math.abs(dy * px - dx * py + xB * yA - yB * xA) / mag;
     const crossProduct = (xB - xA) * (py - yA) - (yB - yA) * (px - xA);
-    if (crossProduct > 0) { if (dist > side1) { side1 = dist; pC = p; } }
-    else { if (dist > side2) { side2 = dist; pD = p; } }
+    const dist = crossProduct / mag;
+    if (dist > side1) { side1 = dist; pC = p; }
+    else if (dist < side2) { side2 = dist; pD = p; }
   });
-  const maxW = side1 + side2;
+  const maxW = Math.abs(side1) + Math.abs(side2);
   const L_yds = maxD * 1.09361;
   const W_yds = maxW * 1.09361;
   const ratio = L_yds / W_yds;
@@ -204,11 +204,25 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('golf_pro_caddy_final');
     if (saved) setHistory(JSON.parse(saved));
     const watch = navigator.geolocation.watchPosition(
-      (p) => setPos({ lat: p.coords.latitude, lng: p.coords.longitude, alt: p.coords.altitude, accuracy: p.coords.accuracy, altAccuracy: p.coords.altitudeAccuracy, timestamp: Date.now() }),
+      (p) => setPos({ 
+        lat: p.coords.latitude, 
+        lng: p.coords.longitude, 
+        alt: p.coords.altitude, 
+        accuracy: p.coords.accuracy, 
+        altAccuracy: p.coords.altitudeAccuracy, 
+        timestamp: Date.now() 
+      }),
       null, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
     return () => navigator.geolocation.clearWatch(watch);
   }, []);
+
+  const saveRecord = useCallback((record: Omit<SavedRecord, 'id' | 'date'>) => {
+    const newRecord: SavedRecord = { ...record, id: Math.random().toString(36).substr(2, 9), date: Date.now() };
+    const updated = [newRecord, ...history];
+    setHistory(updated);
+    localStorage.setItem('golf_pro_caddy_final', JSON.stringify(updated));
+  }, [history]);
 
   const greenAnalysis = useMemo(() => {
     const pts = viewingRecord?.type === 'Green' ? viewingRecord.points : mapPoints;
@@ -220,15 +234,50 @@ const App: React.FC = () => {
     }
     if (mapCompleted || viewingRecord) perimeter += calculateDistance(pts[pts.length-1], pts[0]);
     const shape = (pts.length >= 3 && (mapCompleted || viewingRecord)) ? analyzeGreenShape(pts) : null;
-    return { area: calculateArea(pts), perimeter, bunkerPct: perimeter > 0 ? Math.round((bunkerLength / perimeter) * 100) : 0, egd: shape?.egd, length: shape?.length, width: shape?.width, ratio: shape?.ratio, isL: shape?.isL, pA: shape?.pA, pB: shape?.pB, pC: shape?.pC, pD: shape?.pD };
+    return { 
+      area: calculateArea(pts), 
+      perimeter, 
+      bunkerPct: perimeter > 0 ? Math.round((bunkerLength / perimeter) * 100) : 0, 
+      egd: shape?.egd, 
+      length: shape?.length, 
+      width: shape?.width, 
+      ratio: shape?.ratio, 
+      isL: shape?.isL, 
+      pA: shape?.pA, 
+      pB: shape?.pB, 
+      pC: shape?.pC, 
+      pD: shape?.pD 
+    };
   }, [mapPoints, mapCompleted, viewingRecord]);
 
-  const saveRecord = useCallback((record: Omit<SavedRecord, 'id' | 'date'>) => {
-    const newRecord: SavedRecord = { ...record, id: Math.random().toString(36).substr(2, 9), date: Date.now() };
-    const updated = [newRecord, ...history];
-    setHistory(updated);
-    localStorage.setItem('golf_pro_caddy_final', JSON.stringify(updated));
-  }, [history]);
+  const handleFinalizeGreen = useCallback(() => {
+    if (mapPoints.length < 3) return;
+    const shape = analyzeGreenShape(mapPoints);
+    saveRecord({ 
+      type: 'Green', 
+      primaryValue: Math.round(calculateArea(mapPoints) * (units === 'Yards' ? 1.196 : 1)) + (units === 'Yards' ? 'yd²' : 'm²'), 
+      secondaryValue: `Bunker: ${greenAnalysis?.bunkerPct}%`, 
+      egdValue: (shape?.egd || '0') + 'yd', 
+      points: mapPoints 
+    });
+    setMapActive(false); 
+    setMapCompleted(true);
+  }, [mapPoints, units, greenAnalysis, saveRecord]);
+
+  useEffect(() => {
+    if (mapActive && pos) {
+      setMapPoints(prev => {
+        const last = prev[prev.length - 1];
+        if (!last || calculateDistance(last, pos) >= 0.4) {
+          return [...prev, { ...pos, type: isBunker ? 'bunker' : 'green' }];
+        }
+        return prev;
+      });
+      if (mapPoints.length > 10 && calculateDistance(pos, mapPoints[0]) < 1.0) {
+        handleFinalizeGreen();
+      }
+    }
+  }, [pos, mapActive, isBunker, mapPoints.length, handleFinalizeGreen]);
 
   const deleteHistory = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -236,21 +285,6 @@ const App: React.FC = () => {
     setHistory(updated);
     localStorage.setItem('golf_pro_caddy_final', JSON.stringify(updated));
   }, [history]);
-
-  useEffect(() => {
-    if (mapActive && pos) {
-      setMapPoints(prev => {
-        const last = prev[prev.length - 1];
-        if (!last || calculateDistance(last, pos) >= 0.5) return [...prev, { ...pos, type: isBunker ? 'bunker' : 'green' }];
-        return prev;
-      });
-      if (mapPoints.length > 10 && calculateDistance(pos, mapPoints[0]) < 1.0) {
-        const shape = analyzeGreenShape(mapPoints);
-        saveRecord({ type: 'Green', primaryValue: Math.round(calculateArea(mapPoints) * (units === 'Yards' ? 1.196 : 1)) + (units === 'Yards' ? 'yd²' : 'm²'), secondaryValue: `Bunker: ${greenAnalysis?.bunkerPct}%`, egdValue: shape?.egd + 'yd', points: mapPoints });
-        setMapActive(false); setMapCompleted(true);
-      }
-    }
-  }, [pos, mapActive, isBunker, greenAnalysis, mapPoints, units, saveRecord]);
 
   const accumulatedDist = useMemo(() => {
     if (!trkStart || !pos) return 0;
@@ -266,14 +300,13 @@ const App: React.FC = () => {
     <div className="flex flex-col h-full w-full bg-[#020617] text-white overflow-hidden absolute inset-0 select-none">
       <div className="h-[env(safe-area-inset-top)] bg-[#0f172a]"></div>
       
-      {/* User Manual Modal */}
       {showManual && (
         <div className="fixed inset-0 z-[3000] flex flex-col bg-[#020617] p-6 animate-in slide-in-from-bottom duration-300">
           <header className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-black italic tracking-tight text-blue-500 uppercase">User Manual</h2>
             <button onClick={() => setShowManual(false)} className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center border border-white/10"><X size={24} /></button>
           </header>
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10">
+          <div className="flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10 text-white">
             <section>
               <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Navigation2 size={14} /> Distance Tracker</h3>
               <ul className="space-y-3 text-[13px] text-slate-400 font-medium leading-relaxed">
@@ -290,12 +323,6 @@ const App: React.FC = () => {
                 <li className="flex gap-3"><span className="text-blue-500 font-black shrink-0">03.</span> Returning to the start point (within 1m) will automatically close the shape.</li>
               </ul>
             </section>
-            <section>
-              <h3 className="text-yellow-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Info size={14} /> Effective Green Diameter (EGD)</h3>
-              <p className="text-[13px] text-slate-400 leading-relaxed italic">
-                EGD is a weighted metric derived from the Length/Width ratio of the green. It helps course raters determine the difficulty of a target based on its shape, not just its size.
-              </p>
-            </section>
           </div>
           <button onClick={() => setShowManual(false)} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs tracking-widest">Understood</button>
         </div>
@@ -303,10 +330,10 @@ const App: React.FC = () => {
 
       {showEndConfirm && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#0f172a] w-full max-w-xs rounded-[2rem] border border-white/10 p-6 text-center">
+          <div className="bg-[#0f172a] w-full max-w-xs rounded-[2rem] border border-white/10 p-6 text-center shadow-2xl">
             <h3 className="text-lg font-black uppercase mb-4 text-white">Save Track?</h3>
-            <button onClick={() => { if (trkStart && pos) saveRecord({ type: 'Track', primaryValue: formatDist(accumulatedDist, units) + (units === 'Yards' ? 'yd' : 'm'), secondaryValue: `Elev: ${(elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units) + (units === 'Yards' ? 'ft' : 'm')}`, points: [trkStart, pos], pivots: trkPivots }); setTrkActive(false); setShowEndConfirm(false); }} className="w-full py-4 bg-blue-600 rounded-2xl font-black text-[10px] uppercase mb-2 tracking-widest">Save</button>
-            <button onClick={() => setShowEndConfirm(false)} className="w-full py-4 bg-slate-800 rounded-2xl font-black text-[10px] uppercase text-slate-400 tracking-widest">Cancel</button>
+            <button onClick={() => { if (trkStart && pos) saveRecord({ type: 'Track', primaryValue: formatDist(accumulatedDist, units) + (units === 'Yards' ? 'yd' : 'm'), secondaryValue: `Elev: ${(elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units) + (units === 'Yards' ? 'ft' : 'm')}`, points: [trkStart, pos], pivots: trkPivots }); setTrkActive(false); setShowEndConfirm(false); }} className="w-full py-4 bg-blue-600 rounded-2xl font-black text-lg uppercase mb-2 tracking-widest">Save</button>
+            <button onClick={() => setShowEndConfirm(false)} className="w-full py-4 bg-slate-800 rounded-2xl font-black text-lg uppercase text-slate-400 tracking-widest">Cancel</button>
           </div>
         </div>
       )}
@@ -318,8 +345,8 @@ const App: React.FC = () => {
             <p className="text-white text-[9px] font-black tracking-[0.4em] uppercase mt-2">Course Rating Toolkit ALPHA</p>
           </header>
           <div className="flex flex-col gap-4">
-            <button onClick={() => { setView('track'); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl"><div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6"><Navigation2 size={28} /></div><h2 className="text-xl font-black mb-1 uppercase italic text-blue-500">Distance tracker</h2><p className="text-white text-[10px] opacity-60">Realtime accumulated distance & pivots</p></button>
-            <button onClick={() => { setView('green'); setMapCompleted(false); setMapPoints([]); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl"><div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6"><Target size={28} /></div><h2 className="text-xl font-black mb-1 uppercase italic text-emerald-500">Green Mapper</h2><p className="text-white text-[10px] opacity-60">Area, Bunker & EGD analysis</p></button>
+            <button onClick={() => { setView('track'); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors"><div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6"><Navigation2 size={28} /></div><h2 className="text-xl font-black mb-1 uppercase italic text-blue-500">Distance tracker</h2><p className="text-white text-[10px] opacity-60">Realtime accumulated distance & pivots</p></button>
+            <button onClick={() => { setView('green'); setMapCompleted(false); setMapPoints([]); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors"><div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6"><Target size={28} /></div><h2 className="text-xl font-black mb-1 uppercase italic text-emerald-500">Green Mapper</h2><p className="text-white text-[10px] opacity-60">Area, Bunker & EGD analysis</p></button>
           </div>
           <footer className="mt-8 pb-4">
             {history.length > 0 && (
@@ -389,7 +416,16 @@ const App: React.FC = () => {
             <div className="flex flex-col gap-4 w-full max-w-sm">
               {view === 'track' ? (
                 <>
-                  <div className="pointer-events-auto flex gap-2 w-full"><button onClick={() => { if (!trkActive) { setTrkActive(true); setTrkStart(pos); setTrkPivots([]); } else setShowEndConfirm(true); }} className={`flex-1 h-14 rounded-3xl font-black text-[14px] uppercase border border-white/10 ${trkActive ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}><Navigation2 size={18} /> {trkActive ? 'FINISH' : 'START'}</button>{trkActive && <button onClick={() => trkPivots.length < 3 && pos && setTrkPivots([...trkPivots, pos])} className="flex-1 h-14 rounded-3xl bg-blue-600 text-white font-black text-[14px] uppercase"><Anchor size={16} /> PIVOT {trkPivots.length}/3</button>}</div>
+                  <div className="pointer-events-auto flex gap-2 w-full">
+                    <button onClick={() => { if (!trkActive) { setTrkActive(true); setTrkStart(pos); setTrkPivots([]); } else setShowEndConfirm(true); }} className={`flex-1 h-16 rounded-3xl font-black text-lg uppercase border border-white/10 shadow-lg ${trkActive ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                      <span className="flex items-center justify-center gap-2"><Navigation2 size={24} /> {trkActive ? 'FINISH' : 'START'}</span>
+                    </button>
+                    {trkActive && (
+                      <button onClick={() => trkPivots.length < 3 && pos && setTrkPivots([...trkPivots, pos])} className="flex-1 h-16 rounded-3xl bg-blue-600 text-white font-black text-lg uppercase shadow-lg">
+                        <span className="flex items-center justify-center gap-2"><Anchor size={20} /> PIVOT {trkPivots.length}/3</span>
+                      </button>
+                    )}
+                  </div>
                   <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-3.5 w-full shadow-2xl">
                     <div className="flex items-center justify-around">
                       <div className="flex-1 text-center"><span className="text-[10px] font-black text-white/40 uppercase mb-1">Distance</span><FitText maxFontSize={48} className="font-black text-emerald-400 leading-tight">{viewingRecord ? viewingRecord.primaryValue.replace(/[a-z²]/gi, '') : formatDist(accumulatedDist, units)}<span className="text-[14px] ml-1 font-bold">{units === 'Yards' ? 'yd' : 'm'}</span></FitText></div>
@@ -401,9 +437,18 @@ const App: React.FC = () => {
               ) : (
                 <>
                   <div className="pointer-events-auto flex gap-2 w-full">
-                    <button onClick={() => { if (mapCompleted) { setMapPoints([]); setMapCompleted(false); setMapActive(false); } else if (!mapActive) { setMapPoints(pos ? [pos] : []); setMapActive(true); } else { setMapActive(false); setMapCompleted(true); } }} className="flex-1 h-14 rounded-3xl font-black text-[14px] uppercase bg-emerald-600 text-white">{mapActive ? 'CLOSE GREEN' : (mapCompleted ? 'NEW GREEN' : 'START GREEN')}</button>
+                    <button onClick={() => { if (mapCompleted) { setMapPoints([]); setMapCompleted(false); setMapActive(false); } else if (!mapActive) { setMapPoints(pos ? [pos] : []); setMapActive(true); } else { handleFinalizeGreen(); } }} className="flex-1 h-16 rounded-3xl font-black text-lg uppercase bg-emerald-600 text-white shadow-lg">
+                      {mapActive ? 'CLOSE GREEN' : (mapCompleted ? 'NEW GREEN' : 'START GREEN')}
+                    </button>
                     {mapActive && (
-                      <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-14 rounded-3xl font-black text-[14px] uppercase shadow-lg transition-colors ${isBunker ? 'bg-amber-500 text-slate-950 ring-2 ring-white/20' : 'bg-amber-200/20 text-amber-400 border border-amber-400/30'}`}>{isBunker ? 'RECORDING BUNKER' : 'BUNKER (HOLD)'}</button>
+                      <button 
+                        onPointerDown={() => setIsBunker(true)} 
+                        onPointerUp={() => setIsBunker(false)} 
+                        onPointerLeave={() => setIsBunker(false)} 
+                        className={`flex-1 h-16 rounded-3xl font-black text-lg uppercase shadow-lg transition-all duration-75 active:scale-95 ${isBunker ? 'bg-amber-600 text-white ring-4 ring-white/30' : 'bg-amber-500/20 text-amber-400 border-2 border-amber-500/40'}`}
+                      >
+                        {isBunker ? 'RECORDING...' : 'BUNKER (HOLD)'}
+                      </button>
                     )}
                   </div>
                   <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-4 w-full shadow-2xl">
