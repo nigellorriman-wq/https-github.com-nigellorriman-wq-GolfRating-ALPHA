@@ -1,4 +1,5 @@
-# Scottish Golf Course Rating Toolkit v2
+
+# The Scottish Golf Rating Toolkit
 
 A high-precision measurement tool designed for personal golf course assessment.
 

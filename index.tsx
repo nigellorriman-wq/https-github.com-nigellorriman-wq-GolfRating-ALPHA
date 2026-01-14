@@ -22,7 +22,9 @@ import {
   BookOpen,
   X,
   Type,
-  Info
+  Info,
+  Mail,
+  Zap
 } from 'lucide-react';
 
 /** --- TYPES --- **/
@@ -302,29 +304,63 @@ const App: React.FC = () => {
       
       {showManual && (
         <div className="fixed inset-0 z-[3000] flex flex-col bg-[#020617] p-6 animate-in slide-in-from-bottom duration-300">
-          <header className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-black italic tracking-tight text-blue-500 uppercase">User Manual</h2>
-            <button onClick={() => setShowManual(false)} className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center border border-white/10"><X size={24} /></button>
+          <header className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-black tracking-tight text-blue-500 uppercase">User Manual</h2>
+            <button onClick={() => setShowManual(false)} className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center border border-white/10 active:scale-90 transition-transform"><X size={24} /></button>
           </header>
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10 text-white">
+          
+          <div className="flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10 text-white pr-2">
             <section>
-              <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Navigation2 size={14} /> Distance Tracker</h3>
-              <ul className="space-y-3 text-[13px] text-slate-400 font-medium leading-relaxed">
-                <li className="flex gap-3"><span className="text-emerald-500 font-black shrink-0">01.</span> Start at your ball or tee position. Press START.</li>
-                <li className="flex gap-3"><span className="text-emerald-500 font-black shrink-0">02.</span> Walk the line of the hole. For dog-legs, press PIVOT at the corner.</li>
-                <li className="flex gap-3"><span className="text-emerald-500 font-black shrink-0">03.</span> Reach the target and press FINISH. Distance is cumulative through pivots.</li>
-              </ul>
+              <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Zap size={14} /> Quick Start</h3>
+              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
+                The Scottish Golf Rating Toolkit is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App will still work, though you may lose the background mapping.
+              </p>
             </section>
+
             <section>
-              <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Target size={14} /> Green Mapper</h3>
-              <ul className="space-y-3 text-[13px] text-slate-400 font-medium leading-relaxed">
-                <li className="flex gap-3"><span className="text-blue-500 font-black shrink-0">01.</span> Stand at any point on the green edge. Press START GREEN.</li>
-                <li className="flex gap-3"><span className="text-blue-500 font-black shrink-0">02.</span> Walk the entire perimeter. Hold "BUNKER" while walking sections with bunkers.</li>
-                <li className="flex gap-3"><span className="text-blue-500 font-black shrink-0">03.</span> Returning to the start point (within 1m) will automatically close the shape.</li>
-              </ul>
+              <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Navigation2 size={14} /> Distance Tracker</h3>
+              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
+                Tap 'Start' when you are ready to start tracking the distance. Use 'Pivot' (max 3) at dog-leg corners to measure the true path of the hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other.
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Target size={14} /> Green Mapper</h3>
+              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
+                Start at any point on the edge of the green. Walk the perimeter. The app automatically 'Closes' the loop when you return to within 1m of your start point, or you can force it to close by hitting the button. Results show total Area and Perimeter length. When a green has been mapped, the App will calculate the Effective Green Diameter (Course Rating System Manual (Jan 2024) Section 13).
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-amber-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Layers size={14} /> Recording Bunkers</h3>
+              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
+                While walking the green edge, hold the 'Bunker' button when passing a bunker segment and release when you get to the end. This marks those points as sand. The panel will show what percentage of the green's perimeter is guarded by sand.
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-blue-400 font-black uppercase text-xs mb-3 flex items-center gap-2"><Activity size={14} /> Sensor Diagnostics</h3>
+              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
+                Blue Light (Barometric): Highest precision elevation using your phone's pressure sensor (if it has one). Emerald Light (GNSS 3D): Standard GPS altitude. Amber Light: Searching for vertical lock.
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-slate-300 font-black uppercase text-xs mb-3 flex items-center gap-2"><Download size={14} /> Data export</h3>
+              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
+                Whenever you save a track or green area, the data appears at the bottom of the homescreen. Select a result and it will show you the results again. Hitting the bin icon will delete an individual record. You can also save all results to a KML file, which will be stored in your downloads folder. The filename will be the current date and time. KML files can be opened in GIS packages, such as Google Earth or Google Maps for analysis and archiving purposes.
+              </p>
+            </section>
+
+            <section>
+              <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Mail size={14} /> Help and suggestions</h3>
+              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
+                This App is under development. If you require assistance or have any suggestions, please email me at <a href="mailto:nigel.lorriman@gmail.com" className="text-blue-500 underline">nigel.lorriman@gmail.com</a>
+              </p>
             </section>
           </div>
-          <button onClick={() => setShowManual(false)} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs tracking-widest">Understood</button>
+          
+          <button onClick={() => setShowManual(false)} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs tracking-widest shadow-lg active:scale-95 transition-transform mt-4">Understood</button>
         </div>
       )}
 
@@ -345,8 +381,16 @@ const App: React.FC = () => {
             <p className="text-white text-[9px] font-black tracking-[0.4em] uppercase mt-2">Course Rating Toolkit ALPHA</p>
           </header>
           <div className="flex flex-col gap-4">
-            <button onClick={() => { setView('track'); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors"><div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6"><Navigation2 size={28} /></div><h2 className="text-xl font-black mb-1 uppercase italic text-blue-500">Distance tracker</h2><p className="text-white text-[10px] opacity-60">Realtime accumulated distance & pivots</p></button>
-            <button onClick={() => { setView('green'); setMapCompleted(false); setMapPoints([]); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors"><div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6"><Target size={28} /></div><h2 className="text-xl font-black mb-1 uppercase italic text-emerald-500">Green Mapper</h2><p className="text-white text-[10px] opacity-60">Area, Bunker & EGD analysis</p></button>
+            <button onClick={() => { setView('track'); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors">
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6"><Navigation2 size={28} /></div>
+              <h2 className="text-xl font-black mb-1 uppercase text-blue-500">Distance tracker</h2>
+              <p className="text-white text-[10px] opacity-60">Realtime accumulated distance & pivots</p>
+            </button>
+            <button onClick={() => { setView('green'); setMapCompleted(false); setMapPoints([]); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors">
+              <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6"><Target size={28} /></div>
+              <h2 className="text-xl font-black mb-1 uppercase text-emerald-500">Green Mapper</h2>
+              <p className="text-white text-[10px] opacity-60">Area, Bunker & EGD analysis</p>
+            </button>
           </div>
           <footer className="mt-8 pb-4">
             {history.length > 0 && (
