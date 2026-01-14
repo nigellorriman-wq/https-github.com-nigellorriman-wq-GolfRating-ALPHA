@@ -21,7 +21,8 @@ import {
   Cpu,
   BookOpen,
   X,
-  Type
+  Type,
+  Info
 } from 'lucide-react';
 
 /** --- TYPES --- **/
@@ -187,6 +188,7 @@ const App: React.FC = () => {
   const [pos, setPos] = useState<GeoPoint | null>(null);
   const [history, setHistory] = useState<SavedRecord[]>([]);
   const [viewingRecord, setViewingRecord] = useState<SavedRecord | null>(null);
+  const [showManual, setShowManual] = useState(false);
 
   const [trkActive, setTrkActive] = useState(false);
   const [trkStart, setTrkStart] = useState<GeoPoint | null>(null);
@@ -263,6 +265,42 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-full w-full bg-[#020617] text-white overflow-hidden absolute inset-0 select-none">
       <div className="h-[env(safe-area-inset-top)] bg-[#0f172a]"></div>
+      
+      {/* User Manual Modal */}
+      {showManual && (
+        <div className="fixed inset-0 z-[3000] flex flex-col bg-[#020617] p-6 animate-in slide-in-from-bottom duration-300">
+          <header className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-black italic tracking-tight text-blue-500 uppercase">User Manual</h2>
+            <button onClick={() => setShowManual(false)} className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center border border-white/10"><X size={24} /></button>
+          </header>
+          <div className="flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10">
+            <section>
+              <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Navigation2 size={14} /> Distance Tracker</h3>
+              <ul className="space-y-3 text-[13px] text-slate-400 font-medium leading-relaxed">
+                <li className="flex gap-3"><span className="text-emerald-500 font-black shrink-0">01.</span> Start at your ball or tee position. Press START.</li>
+                <li className="flex gap-3"><span className="text-emerald-500 font-black shrink-0">02.</span> Walk the line of the hole. For dog-legs, press PIVOT at the corner.</li>
+                <li className="flex gap-3"><span className="text-emerald-500 font-black shrink-0">03.</span> Reach the target and press FINISH. Distance is cumulative through pivots.</li>
+              </ul>
+            </section>
+            <section>
+              <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Target size={14} /> Green Mapper</h3>
+              <ul className="space-y-3 text-[13px] text-slate-400 font-medium leading-relaxed">
+                <li className="flex gap-3"><span className="text-blue-500 font-black shrink-0">01.</span> Stand at any point on the green edge. Press START GREEN.</li>
+                <li className="flex gap-3"><span className="text-blue-500 font-black shrink-0">02.</span> Walk the entire perimeter. Hold "BUNKER" while walking sections with bunkers.</li>
+                <li className="flex gap-3"><span className="text-blue-500 font-black shrink-0">03.</span> Returning to the start point (within 1m) will automatically close the shape.</li>
+              </ul>
+            </section>
+            <section>
+              <h3 className="text-yellow-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Info size={14} /> Effective Green Diameter (EGD)</h3>
+              <p className="text-[13px] text-slate-400 leading-relaxed italic">
+                EGD is a weighted metric derived from the Length/Width ratio of the green. It helps course raters determine the difficulty of a target based on its shape, not just its size.
+              </p>
+            </section>
+          </div>
+          <button onClick={() => setShowManual(false)} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs tracking-widest">Understood</button>
+        </div>
+      )}
+
       {showEndConfirm && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
           <div className="bg-[#0f172a] w-full max-w-xs rounded-[2rem] border border-white/10 p-6 text-center">
@@ -285,7 +323,7 @@ const App: React.FC = () => {
           </div>
           <footer className="mt-8 pb-4">
             {history.length > 0 && (
-              <div>
+              <div className="mb-6">
                 <div className="flex items-center justify-between mb-3 px-2">
                   <span className="text-[9px] font-black tracking-[0.2em] text-slate-500 uppercase">History</span>
                   <button onClick={() => exportToKML(history)} className="text-blue-400 text-[8px] font-black uppercase">Export KML</button>
@@ -304,6 +342,9 @@ const App: React.FC = () => {
                 </div>
               </div>
             )}
+            <div className="flex justify-center">
+              <button onClick={() => setShowManual(true)} className="w-[160px] bg-slate-800/80 border border-white/10 p-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"><BookOpen size={16} className="text-blue-500" /><span className="text-[9px] font-black uppercase tracking-widest text-slate-300">User Manual</span></button>
+            </div>
           </footer>
         </div>
       ) : (
