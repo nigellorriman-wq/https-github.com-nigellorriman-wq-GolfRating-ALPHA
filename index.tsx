@@ -24,30 +24,6 @@ import {
   Type
 } from 'lucide-react';
 
-/** --- DOCUMENTATION CONTENT --- **/
-const USER_MANUAL = [
-  {
-    title: "Quick Start",
-    icon: <BookOpen className="text-white-400" />,
-    content: "Scottish Golf Course Rating Toolkit - ALPHA is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device."
-  },
-  {
-    title: "Distance Tracker",
-    icon: <Navigation2 className="text-blue-400" />,
-    content: "Tap 'Start' to track. Use 'Pivot' at dog-legs. Total distance and elevation are calculated from start through pivots."
-  },
-  {
-    title: "Green Mapper & EGD",
-    icon: <Target className="text-emerald-400" />,
-    content: "Walk the perimeter. The app calculates Area and the Effective Green Diameter (EGD). EGD uses weighted averages based on the green's length-to-width ratio."
-  },
-  {
-    title: "EGD Calculation",
-    icon: <Ruler className="text-yellow-400" />,
-    content: "Standard: (L+W)/2. Oval (>2:1): (L+2W)/3. Slim (>3:1): (L+3W)/4. L-Shapes may show dual values."
-  }
-];
-
 /** --- TYPES --- **/
 type AppView = 'landing' | 'track' | 'green';
 type UnitSystem = 'Yards' | 'Metres';
@@ -100,59 +76,59 @@ const calculateArea = (points: GeoPoint[]): number => {
   return Math.abs(area) / 2;
 };
 
+const exportToKML = (records: SavedRecord[]) => {
+  let kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Scottish Golf Export</name>`;
+  records.forEach(rec => {
+    const coords = rec.points.map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
+    kml += `<Placemark><name>${rec.type} - ${rec.primaryValue}</name><description>${rec.egdValue || rec.secondaryValue || ''}</description><LineString><coordinates>${coords}</coordinates></LineString></Placemark>`;
+  });
+  kml += `</Document></kml>`;
+  const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `golf_export_${Date.now()}.kml`;
+  a.click();
+};
+
 /** EGD CALCULATION LOGIC **/
 const analyzeGreenShape = (points: GeoPoint[]) => {
   if (points.length < 3) return null;
-
-  // 1. Find Max Diameter (L)
   let maxD = 0;
   let pA = points[0], pB = points[0];
   for (let i = 0; i < points.length; i++) {
     for (let j = i + 1; j < points.length; j++) {
       const d = calculateDistance(points[i], points[j]);
-      if (d > maxD) {
-        maxD = d;
-        pA = points[i];
-        pB = points[j];
-      }
+      if (d > maxD) { maxD = d; pA = points[i]; pB = points[j]; }
     }
   }
-
-  // 2. Find Crossing Diameter (W) - Perpendicular to Max Diameter
-  // Simple approximation: check all points distance to the line segment pA-pB
-  let maxW = 0;
   const R = 6371e3;
   const latRef = pA.lat * Math.PI / 180;
   const xA = pA.lng * Math.PI / 180 * R * Math.cos(latRef), yA = pA.lat * Math.PI / 180 * R;
   const xB = pB.lng * Math.PI / 180 * R * Math.cos(latRef), yB = pB.lat * Math.PI / 180 * R;
-  
-  const dx = xB - xA;
-  const dy = yB - yA;
+  const dx = xB - xA; const dy = yB - yA;
   const mag = Math.sqrt(dx * dx + dy * dy);
-
   let side1 = 0, side2 = 0;
+  let pC = points[0], pD = points[0];
   points.forEach(p => {
     const px = p.lng * Math.PI / 180 * R * Math.cos(latRef), py = p.lat * Math.PI / 180 * R;
     const dist = Math.abs(dy * px - dx * py + xB * yA - yB * xA) / mag;
     const crossProduct = (xB - xA) * (py - yA) - (yB - yA) * (px - xA);
-    if (crossProduct > 0) side1 = Math.max(side1, dist);
-    else side2 = Math.max(side2, dist);
+    if (crossProduct > 0) { if (dist > side1) { side1 = dist; pC = p; } }
+    else { if (dist > side2) { side2 = dist; pD = p; } }
   });
-  maxW = side1 + side2;
-
+  const maxW = side1 + side2;
   const L_yds = maxD * 1.09361;
   const W_yds = maxW * 1.09361;
   const ratio = L_yds / W_yds;
-
   let egd = 0;
   if (ratio >= 3) egd = (3 * W_yds + L_yds) / 4;
   else if (ratio >= 2) egd = (2 * W_yds + L_yds) / 3;
   else egd = (L_yds + W_yds) / 2;
-
-  // Check for L-shape using convexity check (simplistic)
-  const isConcave = points.length > 10; // Placeholder for L-shape logic
-  
-  return { egd: Math.round(egd * 10) / 10, length: L_yds, width: W_yds, ratio, isL: ratio < 1.3 && isConcave, pA, pB };
+  const polyArea = calculateArea(points);
+  const bboxArea = (maxD * maxW);
+  const isL = (polyArea / bboxArea) < 0.62 && points.length > 8;
+  return { egd: Math.round(egd * 10) / 10, length: L_yds, width: W_yds, ratio, isL, pA, pB, pC, pD };
 };
 
 const formatDist = (m: number, u: UnitSystem) => (m * (u === 'Metres' ? 1 : 1.09361)).toFixed(1);
@@ -164,57 +140,7 @@ const getAccuracyColor = (acc: number) => {
   return '#ef4444';
 };
 
-const exportToKML = (history: SavedRecord[]) => {
-  const kmlHeader = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Golf Toolkit Export</name><Style id="trackStyle"><LineStyle><color>ffff0000</color><width>4</width></LineStyle></Style><Style id="greenStyle"><PolyStyle><color>4d00ff00</color><fill>1</fill><outline>1</outline></PolyStyle><LineStyle><color>ff00ff00</color><width>2</width></LineStyle></Style>`;
-  const kmlFooter = `</Document></kml>`;
-  const placemarks = history.map(item => {
-    const dateStr = new Date(item.date).toLocaleString();
-    if (item.type === 'Track') {
-      const allPoints = [item.points[0], ...(item.pivots || []), item.points[1]];
-      const coords = allPoints.map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
-      return `<Placemark><name>Track: ${item.primaryValue}</name><description>Date: ${dateStr}</description><styleUrl>#trackStyle</styleUrl><LineString><altitudeMode>clampToGround</altitudeMode><coordinates>${coords}</coordinates></LineString></Placemark>`;
-    } else {
-      const coords = [...item.points, item.points[0]].map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
-      return `<Placemark><name>Green: ${item.primaryValue} (EGD: ${item.egdValue})</name><description>Date: ${dateStr}</description><styleUrl>#greenStyle</styleUrl><Polygon><altitudeMode>clampToGround</altitudeMode><outerBoundaryIs><LinearRing><coordinates>${coords}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
-    }
-  }).join('');
-  const blob = new Blob([kmlHeader + placemarks + kmlFooter], { type: 'application/vnd.google-earth.kml+xml' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `golf-export-${Date.now()}.kml`;
-  link.click();
-};
-
 /** --- COMPONENTS --- **/
-const ManualModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [fontScale, setFontScale] = useState(1);
-  return (
-    <div className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-[#0f172a] w-full max-w-sm rounded-[2.5rem] border border-white/10 flex flex-col max-h-[85vh] shadow-2xl overflow-hidden">
-        <div className="p-6 border-b border-white/5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <BookOpen size={20} className="text-blue-400" />
-            <h2 className="text-sm font-black uppercase tracking-widest text-white">User Manual</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setFontScale(s => s === 1.5 ? 1 : s + 0.25)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded-full text-blue-400 border border-blue-400/20"><Type size={16} /><span className="text-[10px] font-black">{fontScale}x</span></button>
-            <button onClick={onClose} className="p-2 bg-slate-800 rounded-full text-slate-400"><X size={20} /></button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
-          {USER_MANUAL.map((item, idx) => (
-            <div key={idx} className="bg-white/[0.03] p-5 rounded-3xl border border-white/5">
-              <div className="flex items-center gap-3 mb-2">{item.icon}<h3 className="font-black uppercase tracking-widest text-white" style={{ fontSize: `${10 * fontScale}px` }}>{item.title}</h3></div>
-              <p className="text-slate-400 leading-relaxed font-medium" style={{ fontSize: `${11 * fontScale}px` }}>{item.content}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const FitText: React.FC<{ children: React.ReactNode; className?: string; maxFontSize: number }> = ({ children, className, maxFontSize }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
@@ -261,7 +187,6 @@ const App: React.FC = () => {
   const [pos, setPos] = useState<GeoPoint | null>(null);
   const [history, setHistory] = useState<SavedRecord[]>([]);
   const [viewingRecord, setViewingRecord] = useState<SavedRecord | null>(null);
-  const [showManual, setShowManual] = useState(false);
 
   const [trkActive, setTrkActive] = useState(false);
   const [trkStart, setTrkStart] = useState<GeoPoint | null>(null);
@@ -285,31 +210,27 @@ const App: React.FC = () => {
 
   const greenAnalysis = useMemo(() => {
     const pts = viewingRecord?.type === 'Green' ? viewingRecord.points : mapPoints;
-    if (pts.length < 3) return null;
-    
+    if (pts.length < 2) return null;
     let perimeter = 0; let bunkerLength = 0;
     for (let i = 0; i < pts.length - 1; i++) {
       const d = calculateDistance(pts[i], pts[i+1]);
       perimeter += d; if (pts[i+1].type === 'bunker') bunkerLength += d;
     }
-    perimeter += calculateDistance(pts[pts.length-1], pts[0]);
-    
-    const shape = analyzeGreenShape(pts);
-    return { 
-      area: calculateArea(pts), 
-      perimeter, 
-      bunkerPct: perimeter > 0 ? Math.round((bunkerLength / perimeter) * 100) : 0,
-      egd: shape?.egd,
-      length: shape?.length,
-      width: shape?.width,
-      ratio: shape?.ratio,
-      isL: shape?.isL
-    };
-  }, [mapPoints, viewingRecord]);
+    if (mapCompleted || viewingRecord) perimeter += calculateDistance(pts[pts.length-1], pts[0]);
+    const shape = (pts.length >= 3 && (mapCompleted || viewingRecord)) ? analyzeGreenShape(pts) : null;
+    return { area: calculateArea(pts), perimeter, bunkerPct: perimeter > 0 ? Math.round((bunkerLength / perimeter) * 100) : 0, egd: shape?.egd, length: shape?.length, width: shape?.width, ratio: shape?.ratio, isL: shape?.isL, pA: shape?.pA, pB: shape?.pB, pC: shape?.pC, pD: shape?.pD };
+  }, [mapPoints, mapCompleted, viewingRecord]);
 
   const saveRecord = useCallback((record: Omit<SavedRecord, 'id' | 'date'>) => {
     const newRecord: SavedRecord = { ...record, id: Math.random().toString(36).substr(2, 9), date: Date.now() };
     const updated = [newRecord, ...history];
+    setHistory(updated);
+    localStorage.setItem('golf_pro_caddy_final', JSON.stringify(updated));
+  }, [history]);
+
+  const deleteHistory = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = history.filter(h => h.id !== id);
     setHistory(updated);
     localStorage.setItem('golf_pro_caddy_final', JSON.stringify(updated));
   }, [history]);
@@ -321,15 +242,9 @@ const App: React.FC = () => {
         if (!last || calculateDistance(last, pos) >= 0.5) return [...prev, { ...pos, type: isBunker ? 'bunker' : 'green' }];
         return prev;
       });
-      if (mapPoints.length > 5 && calculateDistance(pos, mapPoints[0]) < 1.0) {
+      if (mapPoints.length > 10 && calculateDistance(pos, mapPoints[0]) < 1.0) {
         const shape = analyzeGreenShape(mapPoints);
-        saveRecord({
-          type: 'Green',
-          primaryValue: Math.round(calculateArea(mapPoints) * (units === 'Yards' ? 1.196 : 1)) + (units === 'Yards' ? 'yd²' : 'm²'),
-          secondaryValue: `Bunker: ${greenAnalysis?.bunkerPct}%`,
-          egdValue: shape?.egd + 'yd',
-          points: mapPoints
-        });
+        saveRecord({ type: 'Green', primaryValue: Math.round(calculateArea(mapPoints) * (units === 'Yards' ? 1.196 : 1)) + (units === 'Yards' ? 'yd²' : 'm²'), secondaryValue: `Bunker: ${greenAnalysis?.bunkerPct}%`, egdValue: shape?.egd + 'yd', points: mapPoints });
         setMapActive(false); setMapCompleted(true);
       }
     }
@@ -344,20 +259,19 @@ const App: React.FC = () => {
   }, [trkStart, trkPivots, pos]);
 
   const elevDelta = (pos && trkStart && pos.alt !== null && trkStart.alt !== null) ? (pos.alt - trkStart.alt) : 0;
-  const isBarometerActive = (pos?.altAccuracy ?? 10) <= 4.1;
 
   return (
     <div className="flex flex-col h-full w-full bg-[#020617] text-white overflow-hidden absolute inset-0 select-none">
       <div className="h-[env(safe-area-inset-top)] bg-[#0f172a]"></div>
-      {showEndConfirm && <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
-        <div className="bg-[#0f172a] w-full max-w-xs rounded-[2rem] border border-white/10 p-6 text-center">
-          <h3 className="text-lg font-black uppercase mb-4 text-white">Save Track?</h3>
-          <button onClick={() => { if (trkStart && pos) saveRecord({ type: 'Track', primaryValue: formatDist(accumulatedDist, units) + (units === 'Yards' ? 'yd' : 'm'), secondaryValue: `Elev: ${(elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units) + (units === 'Yards' ? 'ft' : 'm')}`, points: [trkStart, pos], pivots: trkPivots }); setTrkActive(false); setShowEndConfirm(false); }} className="w-full py-4 bg-blue-600 rounded-2xl font-black text-[10px] uppercase mb-2 tracking-widest">Save</button>
-          <button onClick={() => setShowEndConfirm(false)} className="w-full py-4 bg-slate-800 rounded-2xl font-black text-[10px] uppercase text-slate-400 tracking-widest">Cancel</button>
+      {showEndConfirm && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#0f172a] w-full max-w-xs rounded-[2rem] border border-white/10 p-6 text-center">
+            <h3 className="text-lg font-black uppercase mb-4 text-white">Save Track?</h3>
+            <button onClick={() => { if (trkStart && pos) saveRecord({ type: 'Track', primaryValue: formatDist(accumulatedDist, units) + (units === 'Yards' ? 'yd' : 'm'), secondaryValue: `Elev: ${(elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units) + (units === 'Yards' ? 'ft' : 'm')}`, points: [trkStart, pos], pivots: trkPivots }); setTrkActive(false); setShowEndConfirm(false); }} className="w-full py-4 bg-blue-600 rounded-2xl font-black text-[10px] uppercase mb-2 tracking-widest">Save</button>
+            <button onClick={() => setShowEndConfirm(false)} className="w-full py-4 bg-slate-800 rounded-2xl font-black text-[10px] uppercase text-slate-400 tracking-widest">Cancel</button>
+          </div>
         </div>
-      </div>}
-
-      {showManual && <ManualModal onClose={() => setShowManual(false)} />}
+      )}
 
       {view === 'landing' ? (
         <div className="flex-1 flex flex-col p-6 overflow-y-auto no-scrollbar">
@@ -366,17 +280,8 @@ const App: React.FC = () => {
             <p className="text-white text-[9px] font-black tracking-[0.4em] uppercase mt-2">Course Rating Toolkit ALPHA</p>
           </header>
           <div className="flex flex-col gap-4">
-            <button onClick={() => { setView('track'); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6"><Navigation2 size={28} /></div>
-              <h2 className="text-xl font-black mb-1 uppercase italic text-blue-500">Distance tracker</h2>
-              <p className="text-white text-[10px] opacity-60">Realtime accumulated distance & pivots</p>
-            </button>
-            <button onClick={() => { setView('green'); setMapCompleted(false); setMapPoints([]); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl">
-              <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6"><Target size={28} /></div>
-              <h2 className="text-xl font-black mb-1 uppercase italic text-emerald-500">Green Mapper</h2>
-              <p className="text-white text-[10px] opacity-60">Area & EGD shape analysis</p>
-            </button>
-            <button onClick={() => setShowManual(true)} className="bg-slate-900/50 border border-white/5 rounded-3xl p-5 flex items-center justify-center gap-3"><BookOpen size={18} className="text-blue-400" /><span className="text-[10px] font-black uppercase tracking-widest text-blue-400">User Manual</span></button>
+            <button onClick={() => { setView('track'); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl"><div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6"><Navigation2 size={28} /></div><h2 className="text-xl font-black mb-1 uppercase italic text-blue-500">Distance tracker</h2><p className="text-white text-[10px] opacity-60">Realtime accumulated distance & pivots</p></button>
+            <button onClick={() => { setView('green'); setMapCompleted(false); setMapPoints([]); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl"><div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6"><Target size={28} /></div><h2 className="text-xl font-black mb-1 uppercase italic text-emerald-500">Green Mapper</h2><p className="text-white text-[10px] opacity-60">Area, Bunker & EGD analysis</p></button>
           </div>
           <footer className="mt-8 pb-4">
             {history.length > 0 && (
@@ -387,11 +292,14 @@ const App: React.FC = () => {
                 </div>
                 <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
                   {history.map(item => (
-                    <button key={item.id} onClick={() => { setViewingRecord(item); setView(item.type === 'Track' ? 'track' : 'green'); }} className="bg-slate-900/50 border border-white/5 px-5 py-4 rounded-2xl flex flex-col min-w-[170px]">
-                      <span className="text-[7px] font-black text-slate-500 uppercase">{item.type}</span>
-                      <span className="text-lg font-black text-white">{item.primaryValue}</span>
-                      <span className="text-[10px] font-bold text-slate-400">{item.egdValue || item.secondaryValue}</span>
-                    </button>
+                    <div key={item.id} className="relative group shrink-0">
+                      <button onClick={() => { setViewingRecord(item); setView(item.type === 'Track' ? 'track' : 'green'); }} className="bg-slate-900/50 border border-white/5 px-5 py-4 rounded-2xl flex flex-col min-w-[170px] text-left">
+                        <span className="text-[7px] font-black text-slate-500 uppercase">{item.type}</span>
+                        <span className="text-lg font-black text-white">{item.primaryValue}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{item.egdValue || item.secondaryValue}</span>
+                      </button>
+                      <button onClick={(e) => deleteHistory(item.id, e)} className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 rounded-full flex items-center justify-center border-2 border-[#020617] text-white shadow-lg active:scale-90 transition-all z-10"><Trash2 size={12} /></button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -402,10 +310,7 @@ const App: React.FC = () => {
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 pointer-events-none flex justify-between items-start">
             <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setMapCompleted(false); setViewingRecord(null); }} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 px-5 py-3 rounded-full flex items-center gap-3"><ChevronLeft size={20} className="text-emerald-400" /><span className="text-[11px] font-black uppercase tracking-[0.2em]">Home</span></button>
-            <div className="flex gap-2">
-              <button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full"><Ruler size={22} className="text-emerald-400" /></button>
-              <button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full"><Layers size={22} className="text-blue-400" /></button>
-            </div>
+            <div className="flex gap-2"><button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full"><Ruler size={22} className="text-emerald-400" /></button><button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full"><Layers size={22} className="text-blue-400" /></button></div>
           </div>
           <main className="flex-1">
             <MapContainer center={[0, 0]} zoom={2} className="h-full w-full custom-map-container" zoomControl={false} attributionControl={false}>
@@ -427,6 +332,12 @@ const App: React.FC = () => {
                         return <Polyline key={i} positions={[[prev.lat, prev.lng], [p.lat, p.lng]]} color={p.type === 'bunker' ? '#f59e0b' : '#10b981'} weight={p.type === 'bunker' ? 7 : 5} />;
                       })}
                       {(viewingRecord || mapCompleted) && <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.2} weight={0} />}
+                      {(viewingRecord || mapCompleted) && greenAnalysis?.pA && greenAnalysis?.pB && (
+                        <Polyline positions={[[greenAnalysis.pA.lat, greenAnalysis.pA.lng], [greenAnalysis.pB.lat, greenAnalysis.pB.lng]]} color="#facc15" weight={2} opacity={0.8} />
+                      )}
+                      {(viewingRecord || mapCompleted) && greenAnalysis?.pC && greenAnalysis?.pD && (
+                        <Polyline positions={[[greenAnalysis.pC.lat, greenAnalysis.pC.lng], [greenAnalysis.pD.lat, greenAnalysis.pD.lng]]} color="#ffffff" weight={1} dashArray="5, 5" opacity={0.6} />
+                      )}
                     </>
                   )}
                 </>
@@ -437,43 +348,36 @@ const App: React.FC = () => {
             <div className="flex flex-col gap-4 w-full max-w-sm">
               {view === 'track' ? (
                 <>
-                  <div className="pointer-events-auto flex gap-2 w-full">
-                    <button onClick={() => { if (!trkActive) { setTrkActive(true); setTrkStart(pos); setTrkPivots([]); } else setShowEndConfirm(true); }} className={`flex-1 h-14 rounded-3xl font-black text-[9px] uppercase border border-white/10 ${trkActive ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}><Navigation2 size={18} /> {trkActive ? 'FINISH' : 'START'}</button>
-                    {trkActive && <button onClick={() => trkPivots.length < 3 && pos && setTrkPivots([...trkPivots, pos])} className="flex-1 h-14 rounded-3xl bg-blue-600 text-white font-black text-[9px] uppercase"><Anchor size={16} /> PIVOT {trkPivots.length}/3</button>}
-                  </div>
+                  <div className="pointer-events-auto flex gap-2 w-full"><button onClick={() => { if (!trkActive) { setTrkActive(true); setTrkStart(pos); setTrkPivots([]); } else setShowEndConfirm(true); }} className={`flex-1 h-14 rounded-3xl font-black text-[14px] uppercase border border-white/10 ${trkActive ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}><Navigation2 size={18} /> {trkActive ? 'FINISH' : 'START'}</button>{trkActive && <button onClick={() => trkPivots.length < 3 && pos && setTrkPivots([...trkPivots, pos])} className="flex-1 h-14 rounded-3xl bg-blue-600 text-white font-black text-[14px] uppercase"><Anchor size={16} /> PIVOT {trkPivots.length}/3</button>}</div>
                   <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-3.5 w-full shadow-2xl">
                     <div className="flex items-center justify-around">
-                      <div className="flex-1 text-center">
-                        <span className="text-[10px] font-black text-white/40 uppercase mb-1">Distance</span>
-                        <FitText maxFontSize={32} className="font-black text-emerald-400">{viewingRecord ? viewingRecord.primaryValue.replace(/[a-z²]/gi, '') : formatDist(accumulatedDist, units)}<span className="text-[12px] ml-1">{units === 'Yards' ? 'yd' : 'm'}</span></FitText>
-                      </div>
+                      <div className="flex-1 text-center"><span className="text-[10px] font-black text-white/40 uppercase mb-1">Distance</span><FitText maxFontSize={48} className="font-black text-emerald-400 leading-tight">{viewingRecord ? viewingRecord.primaryValue.replace(/[a-z²]/gi, '') : formatDist(accumulatedDist, units)}<span className="text-[14px] ml-1 font-bold">{units === 'Yards' ? 'yd' : 'm'}</span></FitText></div>
                       <div className="h-10 w-px bg-white/10 mx-2"></div>
-                      <div className="flex-1 text-center">
-                        <span className="text-[10px] font-black text-white/40 uppercase mb-1">Elevation</span>
-                        <FitText maxFontSize={32} className="font-black text-amber-400">{viewingRecord ? viewingRecord.secondaryValue?.replace('Elev: ', '').replace(/[a-z²]/gi, '') : ((elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units))}<span className="text-[12px] ml-1">{units === 'Yards' ? 'ft' : 'm'}</span></FitText>
-                      </div>
+                      <div className="flex-1 text-center"><span className="text-[10px] font-black text-white/40 uppercase mb-1">Elevation</span><FitText maxFontSize={48} className="font-black text-amber-400 leading-tight">{viewingRecord ? viewingRecord.secondaryValue?.replace('Elev: ', '').replace(/[a-z²]/gi, '') : ((elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units))}<span className="text-[14px] ml-1 font-bold">{units === 'Yards' ? 'ft' : 'm'}</span></FitText></div>
                     </div>
                   </div>
                 </>
               ) : (
                 <>
                   <div className="pointer-events-auto flex gap-2 w-full">
-                    <button onClick={() => { if (mapCompleted) { setMapPoints([]); setMapCompleted(false); setMapActive(false); } else if (!mapActive) { setMapPoints(pos ? [pos] : []); setMapActive(true); } else { setMapActive(false); setMapCompleted(true); } }} className="flex-1 h-14 rounded-3xl font-black text-[10px] uppercase bg-emerald-600 text-white">{mapActive ? 'CLOSE GREEN' : (mapCompleted ? 'NEW GREEN' : 'START GREEN')}</button>
-                    {mapActive && <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} className="flex-1 h-14 rounded-3xl font-black text-[10px] uppercase bg-orange-400 text-slate-950">BUNKER (HOLD)</button>}
+                    <button onClick={() => { if (mapCompleted) { setMapPoints([]); setMapCompleted(false); setMapActive(false); } else if (!mapActive) { setMapPoints(pos ? [pos] : []); setMapActive(true); } else { setMapActive(false); setMapCompleted(true); } }} className="flex-1 h-14 rounded-3xl font-black text-[14px] uppercase bg-emerald-600 text-white">{mapActive ? 'CLOSE GREEN' : (mapCompleted ? 'NEW GREEN' : 'START GREEN')}</button>
+                    {mapActive && (
+                      <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-14 rounded-3xl font-black text-[14px] uppercase shadow-lg transition-colors ${isBunker ? 'bg-amber-500 text-slate-950 ring-2 ring-white/20' : 'bg-amber-200/20 text-amber-400 border border-amber-400/30'}`}>{isBunker ? 'RECORDING BUNKER' : 'BUNKER (HOLD)'}</button>
+                    )}
                   </div>
                   <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-4 w-full shadow-2xl">
-                    <div className="grid grid-cols-2 gap-4 mb-3">
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase">Area</span><div className="text-2xl font-black text-emerald-400">{greenAnalysis ? Math.round(greenAnalysis.area * (units === 'Yards' ? 1.196 : 1)) : '--'}<span className="text-[10px] ml-1">{units === 'Yards' ? 'yd²' : 'm²'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase">Bunker %</span><div className="text-2xl font-black text-orange-400">{greenAnalysis?.bunkerPct ?? '--'}%</div></div>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="text-center"><span className="text-white/40 text-[7px] font-black uppercase">Area</span><div className="text-xl font-black text-emerald-400">{greenAnalysis ? Math.round(greenAnalysis.area * (units === 'Yards' ? 1.196 : 1)) : '--'}<span className="text-[9px] ml-1">{units === 'Yards' ? 'yd²' : 'm²'}</span></div></div>
+                      <div className="text-center"><span className="text-white/40 text-[7px] font-black uppercase">Perimeter</span><div className="text-xl font-black text-blue-400">{greenAnalysis ? formatDist(greenAnalysis.perimeter, units) : '--'}<span className="text-[9px] ml-1">{units === 'Yards' ? 'yd' : 'm'}</span></div></div>
+                      <div className="text-center"><span className="text-white/40 text-[7px] font-black uppercase">Bunker %</span><div className="text-xl font-black text-orange-400">{greenAnalysis?.bunkerPct ?? '--'}%</div></div>
                     </div>
                     {(mapCompleted || viewingRecord) && greenAnalysis && (
                       <div className="bg-white/[0.03] rounded-2xl p-3 border border-white/5">
-                        <div className="flex items-center justify-between mb-2"><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Effective Green Diameter (EGD)</span>{greenAnalysis.isL && <span className="bg-amber-500 text-[7px] font-black text-black px-2 py-0.5 rounded-full">L-SHAPE</span>}</div>
+                        <div className="flex items-center justify-between mb-2"><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Effective Green Diameter (EGD)</span>{greenAnalysis.isL && <span className="bg-amber-500 text-[7px] font-black text-black px-2 py-0.5 rounded-full">L-SHAPE DETECTED</span>}</div>
                         <div className="flex items-end justify-between">
-                          <div className="text-4xl font-black text-yellow-400 leading-none">{viewingRecord?.egdValue?.replace('yd','') || greenAnalysis.egd}<span className="text-[12px] font-bold ml-1 opacity-40">YARDS</span></div>
+                          <div className="text-4xl font-black text-yellow-400 leading-none">{greenAnalysis.egd}<span className="text-[12px] font-bold ml-1 opacity-40">YARDS</span></div>
                           <div className="text-right"><span className="block text-[8px] font-black text-white/30 uppercase tracking-tighter">L: {greenAnalysis.length?.toFixed(1)}yd | W: {greenAnalysis.width?.toFixed(1)}yd</span><span className="block text-[8px] font-black text-white/30 uppercase tracking-tighter">Ratio: {greenAnalysis.ratio?.toFixed(2)}:1</span></div>
                         </div>
-                        {greenAnalysis.isL && <p className="text-[8px] text-amber-500/80 mt-2 font-bold uppercase italic leading-tight">Note: Distinct zones detected. The EGD above represents the primary oval. Adjust weighting as required.</p>}
                       </div>
                     )}
                   </div>
