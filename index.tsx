@@ -7,29 +7,22 @@ import {
   ChevronLeft,
   Navigation2,
   Layers,
-  RotateCcw,
   Target,
-  History as HistoryIcon,
   Trash2,
-  AlertCircle,
   Ruler,
-  Eye,
   Anchor,
-  Undo2,
-  Download,
-  Activity,
-  Cpu,
   BookOpen,
   X,
   Type,
-  Info,
   Mail,
-  Zap
+  Zap,
+  Activity
 } from 'lucide-react';
 
 /** --- TYPES --- **/
 type AppView = 'landing' | 'track' | 'green';
 type UnitSystem = 'Yards' | 'Metres';
+type FontSizeMode = 'Small' | 'Medium' | 'Large';
 
 interface GeoPoint {
   lat: number;
@@ -152,13 +145,14 @@ const FitText: React.FC<{ children: React.ReactNode; className?: string; maxFont
     if (!containerRef.current || !textRef.current) return;
     let currentSize = maxFontSize;
     textRef.current.style.fontSize = `${currentSize}px`;
-    while (textRef.current.scrollWidth > containerRef.current.clientWidth && currentSize > 8) {
+    const targetWidth = containerRef.current.clientWidth - 4;
+    while (textRef.current.scrollWidth > targetWidth && currentSize > 8) {
       currentSize -= 1;
       textRef.current.style.fontSize = `${currentSize}px`;
     }
     setFontSize(currentSize);
   }, [maxFontSize, children]);
-  return <div ref={containerRef} className="w-full flex justify-center items-center overflow-hidden"><div ref={textRef} className={className} style={{ fontSize: `${fontSize}px`, whiteSpace: 'nowrap' }}>{children}</div></div>;
+  return <div ref={containerRef} className="w-full flex justify-center items-center overflow-hidden px-1"><div ref={textRef} className={className} style={{ fontSize: `${fontSize}px`, whiteSpace: 'nowrap' }}>{children}</div></div>;
 };
 
 const MapController: React.FC<{ 
@@ -183,9 +177,30 @@ const MapController: React.FC<{
   return null;
 };
 
+const SignalStatus: React.FC<{ pos: GeoPoint | null, units: UnitSystem }> = ({ pos, units }) => {
+  if (!pos) return <div className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full"><div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div><span className="text-[9px] font-black uppercase tracking-widest text-red-500">No Signal</span></div>;
+  const color = getAccuracyColor(pos.accuracy);
+  const accVal = units === 'Yards' ? (pos.accuracy * 1.09361).toFixed(1) : pos.accuracy.toFixed(1);
+  return (
+    <div className="flex items-center gap-3 px-3 py-1 bg-white/[0.03] border border-white/10 rounded-full">
+      <div className="flex items-center gap-1.5">
+        <Activity size={10} style={{ color }} />
+        <span className="text-[9px] font-black uppercase text-white/40 tracking-wider">Hz Accuracy:</span>
+        <span className="text-[9px] font-black tabular-nums" style={{ color }}>±{accVal}{units === 'Yards' ? 'yd' : 'm'}</span>
+      </div>
+      <div className="w-px h-2 bg-white/10"></div>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[9px] font-black uppercase text-white/40 tracking-wider">Sensor:</span>
+        <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">{pos.accuracy < 15 ? 'GNSS' : 'Inferred'}</span>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('landing');
   const [units, setUnits] = useState<UnitSystem>('Yards');
+  const [fontSizeMode, setFontSizeMode] = useState<FontSizeMode>('Medium');
   const [mapStyle, setMapStyle] = useState<'Street' | 'Satellite'>('Satellite');
   const [pos, setPos] = useState<GeoPoint | null>(null);
   const [history, setHistory] = useState<SavedRecord[]>([]);
@@ -225,6 +240,14 @@ const App: React.FC = () => {
     setHistory(updated);
     localStorage.setItem('golf_pro_caddy_final', JSON.stringify(updated));
   }, [history]);
+
+  const toggleFontSize = () => {
+    setFontSizeMode(current => {
+      if (current === 'Small') return 'Medium';
+      if (current === 'Medium') return 'Large';
+      return 'Small';
+    });
+  };
 
   const greenAnalysis = useMemo(() => {
     const pts = viewingRecord?.type === 'Green' ? viewingRecord.points : mapPoints;
@@ -298,69 +321,76 @@ const App: React.FC = () => {
 
   const elevDelta = (pos && trkStart && pos.alt !== null && trkStart.alt !== null) ? (pos.alt - trkStart.alt) : 0;
 
+  const getManualFontSizeClass = () => {
+    if (fontSizeMode === 'Small') return 'text-xs';
+    if (fontSizeMode === 'Large') return 'text-lg';
+    return 'text-sm';
+  };
+
   return (
     <div className="flex flex-col h-full w-full bg-[#020617] text-white overflow-hidden absolute inset-0 select-none">
       <div className="h-[env(safe-area-inset-top)] bg-[#0f172a]"></div>
       
       {showManual && (
         <div className="fixed inset-0 z-[3000] flex flex-col bg-[#020617] p-6 animate-in slide-in-from-bottom duration-300">
-          <header className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-black tracking-tight text-blue-500 uppercase">User Manual</h2>
-            <button onClick={() => setShowManual(false)} className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center border border-white/10 active:scale-90 transition-transform"><X size={24} /></button>
+          <header className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-black tracking-tight text-blue-500 uppercase">User Manual</h2>
+              <button 
+                onClick={toggleFontSize}
+                className="w-14 h-10 flex items-center justify-center gap-0.5 rounded-xl bg-slate-900 border border-white/10 text-blue-400 shadow-lg active:scale-95 transition-all px-2"
+                title="Cycle Text Size"
+              >
+                <Type size={14} className="opacity-60" />
+                <Type size={20} />
+              </button>
+            </div>
+            <button onClick={() => setShowManual(false)} className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center border border-white/10 active:scale-90 transition-transform shadow-lg"><X size={24} /></button>
           </header>
           
-          <div className="flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10 text-white pr-2">
+          <div className={`flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10 text-white pr-2 ${getManualFontSizeClass()}`}>
             <section>
               <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Zap size={14} /> Quick Start</h3>
-              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
-                The Scottish Golf Rating Toolkit is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App will still work, though you may lose the background mapping.
+              <p className="font-medium leading-relaxed opacity-80">
+                The Scottish Golf Rating Toolkit provides an alternative to roadwheels and barometers. Ensure 'High Accuracy' location is enabled. For best results, keep the app active and in-hand while walking. If you lose connection, the app continues to work using GNSS sensors.
               </p>
             </section>
 
             <section>
               <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Navigation2 size={14} /> Distance Tracker</h3>
-              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
-                Tap 'Start' when you are ready to start tracking the distance. Use 'Pivot' (max 3) at dog-leg corners to measure the true path of the hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other.
+              <p className="font-medium leading-relaxed opacity-80">
+                Tap 'Start' to begin tracking. Use 'Pivot' (max 3) at dog-leg corners to measure the true path. Total distance and elevation change are calculated from start through all pivots to your current position. Accuracy is shown by the colored circle around your location.
               </p>
             </section>
 
             <section>
               <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Target size={14} /> Green Mapper</h3>
-              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
-                Start at any point on the edge of the green. Walk the perimeter. The app automatically 'Closes' the loop when you return to within 1m of your start point, or you can force it to close by hitting the button. Results show total Area and Perimeter length. When a green has been mapped, the App will calculate the Effective Green Diameter (Course Rating System Manual (Jan 2024) Section 13).
+              <p className="font-medium leading-relaxed opacity-80">
+                Walk the green perimeter starting at any point. The app automatically closes when you return to your start point. Results include Area, Perimeter, and Effective Green Diameter (EGD) per Section 13 of the 2024 Course Rating System Manual.
               </p>
             </section>
 
             <section>
               <h3 className="text-amber-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Layers size={14} /> Recording Bunkers</h3>
-              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
-                While walking the green edge, hold the 'Bunker' button when passing a bunker segment and release when you get to the end. This marks those points as sand. The panel will show what percentage of the green's perimeter is guarded by sand.
+              <p className="font-medium leading-relaxed opacity-80">
+                While walking the green edge, hold 'Bunker' when passing sand segments. Releasing will resume normal green edge recording. The panel displays the percentage of the green's perimeter guarded by bunkers.
               </p>
             </section>
 
             <section>
-              <h3 className="text-blue-400 font-black uppercase text-xs mb-3 flex items-center gap-2"><Activity size={14} /> Sensor Diagnostics</h3>
-              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
-                Blue Light (Barometric): Highest precision elevation using your phone's pressure sensor (if it has one). Emerald Light (GNSS 3D): Standard GPS altitude. Amber Light: Searching for vertical lock.
+              <h3 className="text-slate-200 font-black uppercase text-xs mb-3 flex items-center gap-2"><Type size={14} /> Manual Text Size</h3>
+              <p className="font-medium leading-relaxed opacity-80">
+                Adjust the size of text in this manual for readability using the dual-"T" icon at the top of the screen. This specifically scales the manual content to suit lighting conditions. Measurement screens are fixed at high-visibility defaults.
               </p>
             </section>
 
             <section>
-              <h3 className="text-slate-300 font-black uppercase text-xs mb-3 flex items-center gap-2"><Download size={14} /> Data export</h3>
-              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
-                Whenever you save a track or green area, the data appears at the bottom of the homescreen. Select a result and it will show you the results again. Hitting the bin icon will delete an individual record. You can also save all results to a KML file, which will be stored in your downloads folder. The filename will be the current date and time. KML files can be opened in GIS packages, such as Google Earth or Google Maps for analysis and archiving purposes.
-              </p>
-            </section>
-
-            <section>
-              <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Mail size={14} /> Help and suggestions</h3>
-              <p className="text-[13px] text-slate-400 font-medium leading-relaxed">
-                This App is under development. If you require assistance or have any suggestions, please email me at <a href="mailto:nigel.lorriman@gmail.com" className="text-blue-500 underline">nigel.lorriman@gmail.com</a>
+              <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Mail size={14} /> Help</h3>
+              <p className="font-medium leading-relaxed opacity-80">
+                For assistance or suggestions, please email <a href="mailto:nigel.lorriman@gmail.com" className="text-blue-500 underline">nigel.lorriman@gmail.com</a>
               </p>
             </section>
           </div>
-          
-          <button onClick={() => setShowManual(false)} className="w-full py-5 bg-blue-600 rounded-3xl font-black uppercase text-xs tracking-widest shadow-lg active:scale-95 transition-transform mt-4">Understood</button>
         </div>
       )}
 
@@ -422,7 +452,10 @@ const App: React.FC = () => {
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 pointer-events-none flex justify-between items-start">
             <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setMapCompleted(false); setViewingRecord(null); }} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 px-5 py-3 rounded-full flex items-center gap-3"><ChevronLeft size={20} className="text-emerald-400" /><span className="text-[11px] font-black uppercase tracking-[0.2em]">Home</span></button>
-            <div className="flex gap-2"><button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full"><Ruler size={22} className="text-emerald-400" /></button><button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full"><Layers size={22} className="text-blue-400" /></button></div>
+            <div className="flex gap-2">
+              <button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full shadow-lg"><Ruler size={22} className="text-emerald-400" /></button>
+              <button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full shadow-lg"><Layers size={22} className="text-blue-400" /></button>
+            </div>
           </div>
           <main className="flex-1">
             <MapContainer center={[0, 0]} zoom={2} className="h-full w-full custom-map-container" zoomControl={false} attributionControl={false}>
@@ -470,11 +503,30 @@ const App: React.FC = () => {
                       </button>
                     )}
                   </div>
-                  <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-3.5 w-full shadow-2xl">
-                    <div className="flex items-center justify-around">
-                      <div className="flex-1 text-center"><span className="text-[10px] font-black text-white/40 uppercase mb-1">Distance</span><FitText maxFontSize={48} className="font-black text-emerald-400 leading-tight">{viewingRecord ? viewingRecord.primaryValue.replace(/[a-z²]/gi, '') : formatDist(accumulatedDist, units)}<span className="text-[14px] ml-1 font-bold">{units === 'Yards' ? 'yd' : 'm'}</span></FitText></div>
-                      <div className="h-10 w-px bg-white/10 mx-2"></div>
-                      <div className="flex-1 text-center"><span className="text-[10px] font-black text-white/40 uppercase mb-1">Elevation</span><FitText maxFontSize={48} className="font-black text-amber-400 leading-tight">{viewingRecord ? viewingRecord.secondaryValue?.replace('Elev: ', '').replace(/[a-z²]/gi, '') : ((elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units))}<span className="text-[14px] ml-1 font-bold">{units === 'Yards' ? 'ft' : 'm'}</span></FitText></div>
+                  <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-4 w-full shadow-2xl">
+                    <div className="flex justify-center mb-3">
+                      <SignalStatus pos={pos} units={units} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-[1.2] min-w-0 flex flex-col items-center">
+                        <span className="text-[10px] font-black text-white/40 uppercase mb-1 tracking-wider">Distance</span>
+                        <div className="w-full">
+                          <FitText maxFontSize={56} className="font-black text-emerald-400 leading-none">
+                            {viewingRecord ? viewingRecord.primaryValue.replace(/[a-z²]/gi, '') : formatDist(accumulatedDist, units)}
+                            <span className="text-[14px] ml-1 font-bold text-emerald-400/60">{units === 'Yards' ? 'yd' : 'm'}</span>
+                          </FitText>
+                        </div>
+                      </div>
+                      <div className="h-12 w-px bg-white/10 shrink-0"></div>
+                      <div className="flex-1 min-w-0 flex flex-col items-center">
+                        <span className="text-[10px] font-black text-white/40 uppercase mb-1 tracking-wider">Elevation</span>
+                        <div className="w-full">
+                          <FitText maxFontSize={56} className="font-black text-amber-400 leading-none">
+                            {viewingRecord ? viewingRecord.secondaryValue?.replace('Elev: ', '').replace(/[a-z²]/gi, '') : ((elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units))}
+                            <span className="text-[14px] ml-1 font-bold text-amber-400/60">{units === 'Yards' ? 'ft' : 'm'}</span>
+                          </FitText>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </>
@@ -496,10 +548,13 @@ const App: React.FC = () => {
                     )}
                   </div>
                   <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-4 w-full shadow-2xl">
+                    <div className="flex justify-center mb-4">
+                      <SignalStatus pos={pos} units={units} />
+                    </div>
                     <div className="grid grid-cols-3 gap-2 mb-3">
-                      <div className="text-center"><span className="text-white/40 text-[7px] font-black uppercase">Area</span><div className="text-xl font-black text-emerald-400">{greenAnalysis ? Math.round(greenAnalysis.area * (units === 'Yards' ? 1.196 : 1)) : '--'}<span className="text-[9px] ml-1">{units === 'Yards' ? 'yd²' : 'm²'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[7px] font-black uppercase">Perimeter</span><div className="text-xl font-black text-blue-400">{greenAnalysis ? formatDist(greenAnalysis.perimeter, units) : '--'}<span className="text-[9px] ml-1">{units === 'Yards' ? 'yd' : 'm'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[7px] font-black uppercase">Bunker %</span><div className="text-xl font-black text-orange-400">{greenAnalysis?.bunkerPct ?? '--'}%</div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase">Area</span><div className="text-xl font-black text-emerald-400">{greenAnalysis ? Math.round(greenAnalysis.area * (units === 'Yards' ? 1.196 : 1)) : '--'}<span className="text-[9px] ml-1">{units === 'Yards' ? 'yd²' : 'm²'}</span></div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase">Perimeter</span><div className="text-xl font-black text-blue-400">{greenAnalysis ? formatDist(greenAnalysis.perimeter, units) : '--'}<span className="text-[9px] ml-1">{units === 'Yards' ? 'yd' : 'm'}</span></div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase">Bunker %</span><div className="text-xl font-black text-orange-400">{greenAnalysis?.bunkerPct ?? '--'}%</div></div>
                     </div>
                     {(mapCompleted || viewingRecord) && greenAnalysis && (
                       <div className="bg-white/[0.03] rounded-2xl p-3 border border-white/5">
