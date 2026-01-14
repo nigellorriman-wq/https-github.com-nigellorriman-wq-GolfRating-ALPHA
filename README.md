@@ -1,11 +1,24 @@
-<div align="center">
+# Scottish Golf Course Rating Toolkit v2
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+A high-precision measurement tool designed for personal golf course assessment.
 
-  <h1>Built with AI Studio</h2>
+## Features
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+### 1. Distance Tracker (with Pivots)
+- **Real-time GNSS Tracking**: Measures horizontal distance and elevation change.
+- **Pivot Points**: Support for up to 3 pivot points to measure dog-legs or multi-stage holes.
+- **Elevation Delta**: Tracks vertical movement from start to finish.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+### 2. Green Mapper
+- **Area Calculation**: Walk the perimeter of a green to calculate its total square footage/yardage.
+- **Bunker Integration**: Hold the "Bunker" button while walking specific sections to track bunker length and percentage of the total perimeter.
+- **Automatic Closing**: The tool detects when you've returned to the starting point to finalize the shape.
 
-</div>
+## Tech Stack
+- **React / TypeScript**
+- **Leaflet**: High-performance mapping and satellite overlays.
+- **Tailwind CSS**: Modern, mobile-first UI.
+- **Lucide**: Clean iconography.
+
+## Deployment
+This is a single-page application (SPA) that stores history locally on the device using `localStorage`.
