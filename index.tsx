@@ -16,7 +16,8 @@ import {
   Type,
   Zap,
   Activity,
-  RotateCcw
+  RotateCcw,
+  History
 } from 'lucide-react';
 
 /** --- TYPES --- **/
@@ -73,17 +74,73 @@ const calculateArea = (points: GeoPoint[]): number => {
 };
 
 const exportToKML = (records: SavedRecord[]) => {
-  let kml = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Scottish Golf Export</name>`;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const fileName = `golf_export_${timestamp}.kml`;
+  const kmlTitle = `Exported from Scottish Golf Course Rating Toolkit - ${fileName}`;
+
+  let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${kmlTitle}</name>
+    <Style id="trackStyle">
+      <LineStyle><color>ff0000ff</color><width>4</width></LineStyle>
+    </Style>
+    <Style id="greenStyle">
+      <LineStyle><color>ff00ff00</color><width>4</width></LineStyle>
+      <PolyStyle><color>4d00ff00</color></PolyStyle>
+    </Style>
+    <Style id="bunkerStyle">
+      <LineStyle><color>ff00ffff</color><width>6</width></LineStyle>
+    </Style>
+    <Style id="pivotStyle">
+      <IconStyle><scale>0.5</scale></IconStyle>
+    </Style>`;
+
   records.forEach(rec => {
-    const coords = rec.points.map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
-    kml += `<Placemark><name>${rec.type} - ${rec.primaryValue}</name><description>${rec.egdValue || rec.secondaryValue || ''}</description><LineString><coordinates>${coords}</coordinates></LineString></Placemark>`;
+    const description = `Type: ${rec.type}\nValue: ${rec.primaryValue}\nSecondary: ${rec.secondaryValue || 'N/A'}\nEGD: ${rec.egdValue || 'N/A'}`;
+    
+    if (rec.type === 'Track') {
+      const coords = rec.points.map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
+      kml += `
+    <Placemark>
+      <name>Track - ${rec.primaryValue}</name>
+      <description>${description}</description>
+      <styleUrl>#trackStyle</styleUrl>
+      <LineString><coordinates>${coords}</coordinates></LineString>
+    </Placemark>`;
+      
+      rec.pivots?.forEach((pv, idx) => {
+        kml += `
+    <Placemark>
+      <name>Pivot ${idx + 1}</name>
+      <styleUrl>#pivotStyle</styleUrl>
+      <Point><coordinates>${pv.lng},${pv.lat},${pv.alt || 0}</coordinates></Point>
+    </Placemark>`;
+      });
+    } else {
+      for (let i = 0; i < rec.points.length; i++) {
+        const p1 = rec.points[i];
+        const p2 = rec.points[(i + 1) % rec.points.length];
+        const style = p2.type === 'bunker' ? '#bunkerStyle' : '#greenStyle';
+        kml += `
+    <Placemark>
+      <name>Green Segment ${i}</name>
+      <description>${description}</description>
+      <styleUrl>${style}</styleUrl>
+      <LineString>
+        <coordinates>${p1.lng},${p1.lat},${p1.alt || 0} ${p2.lng},${p2.lat},${p2.alt || 0}</coordinates>
+      </LineString>
+    </Placemark>`;
+      }
+    }
   });
-  kml += `</Document></kml>`;
+
+  kml += `\n  </Document>\n</kml>`;
   const blob = new Blob([kml], { type: 'application/vnd.google-earth.kml+xml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `golf_export_${Date.now()}.kml`;
+  a.download = fileName;
   a.click();
 };
 
@@ -163,9 +220,10 @@ const MapController: React.FC<{
     if (viewingRecord && viewingRecord.points.length > 0) {
       const bounds = L.latLngBounds(viewingRecord.points.map(p => [p.lat, p.lng]));
       if (viewingRecord.pivots) viewingRecord.pivots.forEach(pv => bounds.extend([pv.lat, pv.lng]));
-      map.fitBounds(bounds, { padding: [50, 50], animate: true });
+      map.fitBounds(bounds, { paddingBottomRight: [50, 260], paddingTopLeft: [50, 80], animate: true });
     } else if (completed && mode === 'green' && mapPoints.length > 2) {
-      map.fitBounds(L.latLngBounds(mapPoints.map(p => [p.lat, p.lng])), { padding: [50, 50], animate: true });
+      const bounds = L.latLngBounds(mapPoints.map(p => [p.lat, p.lng]));
+      map.fitBounds(bounds, { paddingBottomRight: [50, 260], paddingTopLeft: [50, 80], animate: true });
     } else if (mode === 'track' && active && trkStart && pos) {
       const bounds = L.latLngBounds([trkStart.lat, trkStart.lng], [pos.lat, pos.lng]);
       trkPivots.forEach(p => bounds.extend([p.lat, p.lng]));
@@ -177,7 +235,17 @@ const MapController: React.FC<{
   return null;
 };
 
-const SignalStatus: React.FC<{ pos: GeoPoint | null, units: UnitSystem }> = ({ pos, units }) => {
+const SignalStatus: React.FC<{ pos: GeoPoint | null, units: UnitSystem, isHistorical?: boolean }> = ({ pos, units, isHistorical }) => {
+  if (isHistorical) {
+    return (
+      <div className="flex items-center gap-3 px-3 py-1 bg-blue-900/40 border border-blue-500/30 rounded-full shadow-lg">
+        <div className="flex items-center gap-1">
+          <History size={9} className="text-blue-400" />
+          <span className="text-[8px] font-black uppercase text-blue-400 tracking-wider">Historical Record</span>
+        </div>
+      </div>
+    );
+  }
   if (!pos) return <div className="flex items-center gap-2 px-3 py-1 bg-red-600 border border-red-500 rounded-full shadow-lg"><div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div><span className="text-[8px] font-black uppercase tracking-widest text-white">No Signal</span></div>;
   const color = getAccuracyColor(pos.accuracy);
   const accVal = units === 'Yards' ? (pos.accuracy * 1.09361).toFixed(1) : pos.accuracy.toFixed(1);
@@ -426,8 +494,24 @@ const App: React.FC = () => {
               {pos && (view !== 'green' || !mapCompleted) && !viewingRecord && (
                 <><Circle center={[pos.lat, pos.lng]} radius={pos.accuracy} pathOptions={{ color: getAccuracyColor(pos.accuracy), fillOpacity: 0.1, weight: 1 }} /><CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} /></>
               )}
-              {view === 'track' && (trkStart && pos && !viewingRecord) && (
-                <><CircleMarker center={[trkStart.lat, trkStart.lng]} radius={6} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1 }} />{trkPivots.map((pv, i) => <CircleMarker key={i} center={[pv.lat, pv.lng]} radius={6} pathOptions={{ color: '#fff', fillColor: '#f59e0b', fillOpacity: 1 }} />)}<Polyline positions={[[trkStart.lat, trkStart.lng] as [number, number], ...trkPivots.map(p => [p.lat, p.lng] as [number, number]), [pos.lat, pos.lng] as [number, number]]} color="#3b82f6" weight={5} /></>
+              {view === 'track' && (viewingRecord ? viewingRecord.points.length >= 2 : (trkStart && pos)) && (
+                <>
+                  <CircleMarker center={viewingRecord ? [viewingRecord.points[0].lat, viewingRecord.points[0].lng] : [trkStart!.lat, trkStart!.lng]} radius={6} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1 }} />
+                  {(viewingRecord?.pivots || trkPivots).map((pv, i) => (
+                    <CircleMarker key={i} center={[pv.lat, pv.lng]} radius={6} pathOptions={{ color: '#fff', fillColor: '#f59e0b', fillOpacity: 1 }} />
+                  ))}
+                  {viewingRecord && (
+                    <CircleMarker center={[viewingRecord.points[viewingRecord.points.length - 1].lat, viewingRecord.points[viewingRecord.points.length - 1].lng]} radius={6} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1 }} />
+                  )}
+                  {(() => {
+                    const start = viewingRecord ? viewingRecord.points[0] : trkStart!;
+                    const pivots = viewingRecord?.pivots || trkPivots;
+                    const positions: [number, number][] = [[start.lat, start.lng], ...pivots.map(p => [p.lat, p.lng] as [number, number])];
+                    if (viewingRecord) positions.push([viewingRecord.points[viewingRecord.points.length - 1].lat, viewingRecord.points[viewingRecord.points.length - 1].lng]);
+                    else if (trkActive && pos) positions.push([pos.lat, pos.lng]);
+                    return <Polyline positions={positions} color="#ef4444" weight={5} />;
+                  })()}
+                </>
               )}
               {view === 'green' && (
                 <>
@@ -436,7 +520,7 @@ const App: React.FC = () => {
                       {(viewingRecord?.points || mapPoints).map((p, i, arr) => {
                         if (i === 0) return null;
                         const prev = arr[i - 1];
-                        return <Polyline key={i} positions={[[prev.lat, prev.lng], [p.lat, p.lng]]} color={p.type === 'bunker' ? '#f59e0b' : '#10b981'} weight={p.type === 'bunker' ? 7 : 5} />;
+                        return <Polyline key={i} positions={[[prev.lat, prev.lng], [p.lat, p.lng]]} color={p.type === 'bunker' ? '#facc15' : '#10b981'} weight={p.type === 'bunker' ? 7 : 5} />;
                       })}
                       {(viewingRecord || mapCompleted) && (
                         <>
@@ -444,9 +528,16 @@ const App: React.FC = () => {
                             const pts = viewingRecord?.points || mapPoints;
                             const first = pts[0];
                             const last = pts[pts.length - 1];
-                            return <Polyline positions={[[last.lat, last.lng], [first.lat, first.lng]]} color={last.type === 'bunker' ? '#f59e0b' : '#10b981'} weight={last.type === 'bunker' ? 7 : 5} />;
+                            return <Polyline positions={[[last.lat, last.lng], [first.lat, first.lng]]} color={last.type === 'bunker' ? '#facc15' : '#10b981'} weight={last.type === 'bunker' ? 7 : 5} />;
                           })()}
                           <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.2} weight={0} />
+                          {/* Contrasting Diameter Lines (Cyan) */}
+                          {greenAnalysis?.pA && greenAnalysis?.pB && (
+                            <Polyline positions={[[greenAnalysis.pA.lat, greenAnalysis.pA.lng], [greenAnalysis.pB.lat, greenAnalysis.pB.lng]]} color="#22d3ee" weight={2.5} dashArray="8, 8" opacity={0.8} />
+                          )}
+                          {greenAnalysis?.pC && greenAnalysis?.pD && (
+                            <Polyline positions={[[greenAnalysis.pC.lat, greenAnalysis.pC.lng], [greenAnalysis.pD.lat, greenAnalysis.pD.lng]]} color="#22d3ee" weight={2.5} dashArray="8, 8" opacity={0.8} />
+                          )}
                         </>
                       )}
                     </>
@@ -461,7 +552,7 @@ const App: React.FC = () => {
               
               <div className="pointer-events-auto bg-slate-900 border border-white/20 rounded-[2.5rem] p-4 w-full shadow-2xl">
                 <div className="flex justify-center mb-4">
-                  <SignalStatus pos={pos} units={units} />
+                  <SignalStatus pos={pos} units={units} isHistorical={!!viewingRecord} />
                 </div>
                 {view === 'track' ? (
                   <div className="flex items-center justify-between gap-2">
@@ -483,11 +574,11 @@ const App: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-3 gap-2 mb-6">
+                    <div className="grid grid-cols-3 gap-2 mb-4">
                       <div className="text-center flex flex-col items-center justify-center">
                         <span className="text-white/40 text-[8px] font-black uppercase tracking-[0.2em] mb-1">Area</span>
                         <div className="text-3xl font-black text-emerald-400 leading-none">
-                          {greenAnalysis ? Math.round(greenAnalysis.area * (units === 'Yards' ? 1.196 : 1)) : '--'}
+                          {viewingRecord ? viewingRecord.primaryValue.replace(/[a-z²]/gi, '') : (greenAnalysis ? Math.round(greenAnalysis.area * (units === 'Yards' ? 1.196 : 1)) : '--')}
                           <span className="text-[11px] ml-0.5 opacity-40 font-black">{units === 'Yards' ? 'yd²' : 'm²'}</span>
                         </div>
                       </div>
@@ -501,33 +592,35 @@ const App: React.FC = () => {
                       <div className="text-center flex flex-col items-center justify-center">
                         <span className="text-white/40 text-[8px] font-black uppercase tracking-[0.2em] mb-1">Bunk%</span>
                         <div className="text-3xl font-black text-orange-400 leading-none">
-                          {greenAnalysis?.bunkerPct ?? '--'}
+                          {viewingRecord ? viewingRecord.secondaryValue?.split(':')[1].trim().replace('%', '') : (greenAnalysis?.bunkerPct ?? '--')}
                           <span className="text-[11px] ml-0.5 opacity-40 font-black">%</span>
                         </div>
                       </div>
                     </div>
                     {(mapCompleted || viewingRecord) && greenAnalysis && (
-                      <div className="bg-white/[0.05] rounded-3xl p-4 border border-white/10 flex items-center justify-between shadow-inner">
-                        <div className="flex-1 pr-2">
-                          <span className="block text-[7px] font-black text-blue-400 uppercase tracking-widest mb-1">Effective Diameter (EGD)</span>
-                          <div className="text-5xl font-black text-yellow-400 leading-none">
-                            {greenAnalysis.egd}
-                            <span className="text-[14px] font-black ml-1.5 opacity-40">YD</span>
+                      <div className="bg-white/[0.05] rounded-3xl p-4 border border-white/10 flex flex-col gap-3 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <span className="block text-[7px] font-black text-blue-400 uppercase tracking-widest mb-1">Effective Diameter (EGD)</span>
+                            <div className="text-5xl font-black text-yellow-400 leading-none">
+                              {viewingRecord?.egdValue?.replace('yd', '') || greenAnalysis.egd}
+                              <span className="text-[14px] font-black ml-1.5 opacity-40">YD</span>
+                            </div>
                           </div>
-                          {greenAnalysis.isL && <span className="inline-block bg-amber-500 text-[8px] font-black text-black px-2 py-0.5 rounded-full mt-2 shadow-lg">L-SHAPE</span>}
+                          {greenAnalysis.isL && <div className="bg-amber-500 text-[8px] font-black text-black px-3 py-1 rounded-full shadow-lg h-fit uppercase">L-SHAPE</div>}
                         </div>
-                        <div className="flex flex-col gap-1 items-end shrink-0 pl-3 border-l border-white/10">
-                          <div className="text-right">
-                            <span className="block text-[8px] font-black text-white uppercase leading-none mb-1">Length</span>
-                            <span className="text-lg font-black text-white leading-tight tabular-nums">{greenAnalysis.length?.toFixed(1)}</span>
+                        <div className="grid grid-cols-3 border-t border-white/10 pt-3 gap-2">
+                          <div className="flex flex-col">
+                            <span className="text-[8px] font-black text-white/50 uppercase leading-none mb-1.5">W</span>
+                            <span className="text-sm font-black text-white tabular-nums leading-none">{greenAnalysis.width?.toFixed(1)}</span>
                           </div>
-                          <div className="text-right">
-                            <span className="block text-[8px] font-black text-white uppercase leading-none mb-1">Width</span>
-                            <span className="text-lg font-black text-white leading-tight tabular-nums">{greenAnalysis.width?.toFixed(1)}</span>
+                          <div className="flex flex-col border-l border-white/10 pl-2">
+                            <span className="text-[8px] font-black text-white/50 uppercase leading-none mb-1.5">L</span>
+                            <span className="text-sm font-black text-white tabular-nums leading-none">{greenAnalysis.length?.toFixed(1)}</span>
                           </div>
-                          <div className="text-right">
-                            <span className="block text-[8px] font-black text-white uppercase leading-none mb-1">Ratio</span>
-                            <span className="text-sm font-black text-blue-400 leading-none tabular-nums">{greenAnalysis.ratio?.toFixed(2)}</span>
+                          <div className="flex flex-col border-l border-white/10 pl-2">
+                            <span className="text-[8px] font-black text-blue-400 uppercase leading-none mb-1.5">Ratio</span>
+                            <span className="text-sm font-black text-white tabular-nums leading-none">{greenAnalysis.ratio?.toFixed(2)}</span>
                           </div>
                         </div>
                       </div>
@@ -537,50 +630,33 @@ const App: React.FC = () => {
               </div>
 
               <div className="pointer-events-auto flex gap-2 w-full">
-                {view === 'track' ? (
-                  <>
-                    <button 
-                      onClick={() => { if (!trkActive) { setTrkActive(true); setTrkStart(pos); setTrkPivots([]); } else setShowEndConfirm(true); }} 
-                      className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase border-2 shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}
-                    >
-                      <Navigation2 size={14} /> {trkActive ? 'FINISH' : 'START'}
-                    </button>
-                    {trkActive && (
-                      <div className="flex-1 flex gap-1">
-                        <button 
-                          onClick={() => trkPivots.length < 3 && pos && setTrkPivots([...trkPivots, pos])} 
-                          className="flex-1 h-11 rounded-full bg-blue-600 border-2 border-blue-500 text-white font-black text-[11px] tracking-[0.15em] uppercase shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
-                        >
-                          <Anchor size={14} /> PIVOT {trkPivots.length}/3
-                        </button>
-                        {trkPivots.length > 0 && (
-                          <button 
-                            onClick={() => setTrkPivots(prev => prev.slice(0, -1))}
-                            className="w-11 h-11 bg-slate-800 border-2 border-white/20 text-white rounded-full flex items-center justify-center active:scale-90 shadow-xl"
-                          >
-                            <RotateCcw size={16} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </>
+                {viewingRecord ? (
+                  <div className="w-full flex items-center justify-center p-3.5 bg-slate-800/40 rounded-full border border-white/5 shadow-inner">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Return Home to Map New {view === 'track' ? 'Track' : 'Green'}</span>
+                  </div>
                 ) : (
                   <>
-                    <button 
-                      onClick={() => { if (mapCompleted) { setMapPoints([]); setMapCompleted(false); setMapActive(false); } else if (!mapActive) { setMapPoints(pos ? [pos] : []); setMapActive(true); } else { handleFinalizeGreen(); } }} 
-                      className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase border-2 shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}
-                    >
-                      {mapActive ? 'COMPLETE' : (mapCompleted ? 'RESTART' : 'NEW GREEN')}
-                    </button>
-                    {mapActive && (
-                      <button 
-                        onPointerDown={() => setIsBunker(true)} 
-                        onPointerUp={() => setIsBunker(false)} 
-                        onPointerLeave={() => setIsBunker(false)} 
-                        className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase shadow-xl transition-all border-2 flex items-center justify-center gap-2 ${isBunker ? 'bg-orange-600 border-orange-500 text-white' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}
-                      >
-                        {isBunker ? 'RECORDING...' : 'BUNKER (HOLD)'}
-                      </button>
+                    {view === 'track' ? (
+                      <>
+                        <button onClick={() => { if (!trkActive) { setTrkActive(true); setTrkStart(pos); setTrkPivots([]); } else setShowEndConfirm(true); }} className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase border-2 shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>
+                          <Navigation2 size={14} /> {trkActive ? 'FINISH' : 'START'}
+                        </button>
+                        {trkActive && (
+                          <div className="flex-1 flex gap-1">
+                            <button onClick={() => trkPivots.length < 3 && pos && setTrkPivots([...trkPivots, pos])} className="flex-1 h-11 rounded-full bg-blue-600 border-2 border-blue-500 text-white font-black text-[11px] tracking-[0.15em] uppercase shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2">
+                              <Anchor size={14} /> PIVOT {trkPivots.length}/3
+                            </button>
+                            {trkPivots.length > 0 && <button onClick={() => setTrkPivots(prev => prev.slice(0, -1))} className="w-11 h-11 bg-slate-800 border-2 border-white/20 text-white rounded-full flex items-center justify-center active:scale-90 shadow-xl"><RotateCcw size={16} /></button>}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => { if (mapCompleted) { setMapPoints([]); setMapCompleted(false); setMapActive(false); } else if (!mapActive) { setMapPoints(pos ? [pos] : []); setMapActive(true); } else { handleFinalizeGreen(); } }} className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase border-2 shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>
+                          {mapActive ? 'COMPLETE' : (mapCompleted ? 'RESTART' : 'NEW GREEN')}
+                        </button>
+                        {mapActive && <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase shadow-xl transition-all border-2 flex items-center justify-center gap-2 ${isBunker ? 'bg-orange-600 border-orange-500 text-white' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}>{isBunker ? 'RECORDING...' : 'BUNKER (HOLD)'}</button>}
+                      </>
                     )}
                   </>
                 )}
