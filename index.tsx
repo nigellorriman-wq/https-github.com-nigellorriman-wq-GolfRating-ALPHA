@@ -14,9 +14,9 @@ import {
   BookOpen,
   X,
   Type,
-  Mail,
   Zap,
-  Activity
+  Activity,
+  RotateCcw
 } from 'lucide-react';
 
 /** --- TYPES --- **/
@@ -178,20 +178,20 @@ const MapController: React.FC<{
 };
 
 const SignalStatus: React.FC<{ pos: GeoPoint | null, units: UnitSystem }> = ({ pos, units }) => {
-  if (!pos) return <div className="flex items-center gap-2 px-3 py-1 bg-red-500/10 border border-red-500/20 rounded-full"><div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div><span className="text-[9px] font-black uppercase tracking-widest text-red-500">No Signal</span></div>;
+  if (!pos) return <div className="flex items-center gap-2 px-3 py-1 bg-red-600 border border-red-500 rounded-full shadow-lg"><div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div><span className="text-[8px] font-black uppercase tracking-widest text-white">No Signal</span></div>;
   const color = getAccuracyColor(pos.accuracy);
   const accVal = units === 'Yards' ? (pos.accuracy * 1.09361).toFixed(1) : pos.accuracy.toFixed(1);
   return (
-    <div className="flex items-center gap-3 px-3 py-1 bg-white/[0.03] border border-white/10 rounded-full">
-      <div className="flex items-center gap-1.5">
-        <Activity size={10} style={{ color }} />
-        <span className="text-[9px] font-black uppercase text-white/40 tracking-wider">Hz Accuracy:</span>
-        <span className="text-[9px] font-black tabular-nums" style={{ color }}>±{accVal}{units === 'Yards' ? 'yd' : 'm'}</span>
+    <div className="flex items-center gap-3 px-3 py-1 bg-slate-800 border border-white/20 rounded-full shadow-lg">
+      <div className="flex items-center gap-1">
+        <Activity size={9} style={{ color }} />
+        <span className="text-[8px] font-black uppercase text-white/50 tracking-wider">Acc:</span>
+        <span className="text-[8px] font-black tabular-nums" style={{ color }}>±{accVal}{units === 'Yards' ? 'yd' : 'm'}</span>
       </div>
       <div className="w-px h-2 bg-white/10"></div>
-      <div className="flex items-center gap-1.5">
-        <span className="text-[9px] font-black uppercase text-white/40 tracking-wider">Sensor:</span>
-        <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">{pos.accuracy < 15 ? 'GNSS' : 'Inferred'}</span>
+      <div className="flex items-center gap-1">
+        <span className="text-[8px] font-black uppercase text-white/50 tracking-wider">SRC:</span>
+        <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">{pos.accuracy < 15 ? 'GNSS' : 'INF'}</span>
       </div>
     </div>
   );
@@ -347,49 +347,10 @@ const App: React.FC = () => {
             </div>
             <button onClick={() => setShowManual(false)} className="w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center border border-white/10 active:scale-90 transition-transform shadow-lg"><X size={24} /></button>
           </header>
-          
           <div className={`flex-1 overflow-y-auto no-scrollbar space-y-8 pb-10 text-white pr-2 ${getManualFontSizeClass()}`}>
-            <section>
-              <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Zap size={14} /> Quick Start</h3>
-              <p className="font-medium leading-relaxed opacity-80">
-                The Scottish Golf Rating Toolkit provides an alternative to roadwheels and barometers. Ensure 'High Accuracy' location is enabled. For best results, keep the app active and in-hand while walking. If you lose connection, the app continues to work using GNSS sensors.
-              </p>
-            </section>
-
-            <section>
-              <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Navigation2 size={14} /> Distance Tracker</h3>
-              <p className="font-medium leading-relaxed opacity-80">
-                Tap 'Start' to begin tracking. Use 'Pivot' (max 3) at dog-leg corners to measure the true path. Total distance and elevation change are calculated from start through all pivots to your current position. Accuracy is shown by the colored circle around your location.
-              </p>
-            </section>
-
-            <section>
-              <h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Target size={14} /> Green Mapper</h3>
-              <p className="font-medium leading-relaxed opacity-80">
-                Walk the green perimeter starting at any point. The app automatically closes when you return to your start point. Results include Area, Perimeter, and Effective Green Diameter (EGD) per Section 13 of the 2024 Course Rating System Manual.
-              </p>
-            </section>
-
-            <section>
-              <h3 className="text-amber-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Layers size={14} /> Recording Bunkers</h3>
-              <p className="font-medium leading-relaxed opacity-80">
-                While walking the green edge, hold 'Bunker' when passing sand segments. Releasing will resume normal green edge recording. The panel displays the percentage of the green's perimeter guarded by bunkers.
-              </p>
-            </section>
-
-            <section>
-              <h3 className="text-slate-200 font-black uppercase text-xs mb-3 flex items-center gap-2"><Type size={14} /> Manual Text Size</h3>
-              <p className="font-medium leading-relaxed opacity-80">
-                Adjust the size of text in this manual for readability using the dual-"T" icon at the top of the screen. This specifically scales the manual content to suit lighting conditions. Measurement screens are fixed at high-visibility defaults.
-              </p>
-            </section>
-
-            <section>
-              <h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Mail size={14} /> Help</h3>
-              <p className="font-medium leading-relaxed opacity-80">
-                For assistance or suggestions, please email <a href="mailto:nigel.lorriman@gmail.com" className="text-blue-500 underline">nigel.lorriman@gmail.com</a>
-              </p>
-            </section>
+             <section><h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Zap size={14} /> Quick Start</h3><p className="font-medium opacity-80 leading-relaxed">Ensure 'High Accuracy' location is enabled. For best results, keep the app active and in-hand while walking.</p></section>
+             <section><h3 className="text-blue-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Navigation2 size={14} /> Distance Tracker</h3><p className="font-medium opacity-80 leading-relaxed">Tap 'Start' to track. Use 'Pivot' for dog-legs. Total distance includes all pivot stages.</p></section>
+             <section><h3 className="text-emerald-500 font-black uppercase text-xs mb-3 flex items-center gap-2"><Target size={14} /> Green Mapper</h3><p className="font-medium opacity-80 leading-relaxed">Walk green edge. Tool calculates Area, Perimeter, and EGD.</p></section>
           </div>
         </div>
       )}
@@ -398,8 +359,8 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
           <div className="bg-[#0f172a] w-full max-w-xs rounded-[2rem] border border-white/10 p-6 text-center shadow-2xl">
             <h3 className="text-lg font-black uppercase mb-4 text-white">Save Track?</h3>
-            <button onClick={() => { if (trkStart && pos) saveRecord({ type: 'Track', primaryValue: formatDist(accumulatedDist, units) + (units === 'Yards' ? 'yd' : 'm'), secondaryValue: `Elev: ${(elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units) + (units === 'Yards' ? 'ft' : 'm')}`, points: [trkStart, pos], pivots: trkPivots }); setTrkActive(false); setShowEndConfirm(false); }} className="w-full py-4 bg-blue-600 rounded-2xl font-black text-lg uppercase mb-2 tracking-widest">Save</button>
-            <button onClick={() => setShowEndConfirm(false)} className="w-full py-4 bg-slate-800 rounded-2xl font-black text-lg uppercase text-slate-400 tracking-widest">Cancel</button>
+            <button onClick={() => { if (trkStart && pos) saveRecord({ type: 'Track', primaryValue: formatDist(accumulatedDist, units) + (units === 'Yards' ? 'yd' : 'm'), secondaryValue: `Elev: ${(elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units) + (units === 'Yards' ? 'ft' : 'm')}`, points: [trkStart, pos], pivots: trkPivots }); setTrkActive(false); setShowEndConfirm(false); }} className="w-full py-4 bg-blue-600 rounded-2xl font-black text-lg uppercase mb-2 tracking-widest shadow-xl">Save</button>
+            <button onClick={() => setShowEndConfirm(false)} className="w-full py-4 bg-slate-800 rounded-2xl font-black text-lg uppercase text-slate-400 tracking-widest shadow-xl">Cancel</button>
           </div>
         </div>
       )}
@@ -412,12 +373,12 @@ const App: React.FC = () => {
           </header>
           <div className="flex flex-col gap-4">
             <button onClick={() => { setView('track'); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6"><Navigation2 size={28} /></div>
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-600/30"><Navigation2 size={28} /></div>
               <h2 className="text-xl font-black mb-1 uppercase text-blue-500">Distance tracker</h2>
               <p className="text-white text-[10px] opacity-60">Realtime accumulated distance & pivots</p>
             </button>
             <button onClick={() => { setView('green'); setMapCompleted(false); setMapPoints([]); setViewingRecord(null); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center shadow-2xl active:bg-slate-800 transition-colors">
-              <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6"><Target size={28} /></div>
+              <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-600/30"><Target size={28} /></div>
               <h2 className="text-xl font-black mb-1 uppercase text-emerald-500">Green Mapper</h2>
               <p className="text-white text-[10px] opacity-60">Area, Bunker & EGD analysis</p>
             </button>
@@ -432,31 +393,32 @@ const App: React.FC = () => {
                 <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
                   {history.map(item => (
                     <div key={item.id} className="relative group shrink-0">
-                      <button onClick={() => { setViewingRecord(item); setView(item.type === 'Track' ? 'track' : 'green'); }} className="bg-slate-900/50 border border-white/5 px-5 py-4 rounded-2xl flex flex-col min-w-[170px] text-left">
+                      <button onClick={() => { setViewingRecord(item); setView(item.type === 'Track' ? 'track' : 'green'); }} className="bg-slate-900 border border-white/10 px-5 py-4 rounded-2xl flex flex-col min-w-[170px] text-left shadow-lg">
                         <span className="text-[7px] font-black text-slate-500 uppercase">{item.type}</span>
                         <span className="text-lg font-black text-white">{item.primaryValue}</span>
                         <span className="text-[10px] font-bold text-slate-400">{item.egdValue || item.secondaryValue}</span>
                       </button>
-                      <button onClick={(e) => deleteHistory(item.id, e)} className="absolute -top-2 -right-2 w-7 h-7 bg-red-500 rounded-full flex items-center justify-center border-2 border-[#020617] text-white shadow-lg active:scale-90 transition-all z-10"><Trash2 size={12} /></button>
+                      <button onClick={(e) => deleteHistory(item.id, e)} className="absolute -top-2 -right-2 w-7 h-7 bg-red-600 rounded-full flex items-center justify-center border-2 border-[#020617] text-white shadow-xl active:scale-90 transition-all z-10"><Trash2 size={12} /></button>
                     </div>
                   ))}
                 </div>
               </div>
             )}
             <div className="flex justify-center">
-              <button onClick={() => setShowManual(true)} className="w-[160px] bg-slate-800/80 border border-white/10 p-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"><BookOpen size={16} className="text-blue-500" /><span className="text-[9px] font-black uppercase tracking-widest text-slate-300">User Manual</span></button>
+              <button onClick={() => setShowManual(true)} className="w-[160px] bg-slate-800 border border-white/10 p-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xl"><BookOpen size={16} className="text-blue-500" /><span className="text-[9px] font-black uppercase tracking-widest text-white">User Manual</span></button>
             </div>
           </footer>
         </div>
       ) : (
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 pointer-events-none flex justify-between items-start">
-            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setMapCompleted(false); setViewingRecord(null); }} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 px-5 py-3 rounded-full flex items-center gap-3"><ChevronLeft size={20} className="text-emerald-400" /><span className="text-[11px] font-black uppercase tracking-[0.2em]">Home</span></button>
+            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setMapCompleted(false); setViewingRecord(null); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-4 py-2.5 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all"><ChevronLeft size={16} className="text-emerald-400" /><span className="text-[10px] font-black uppercase tracking-widest text-white">Home</span></button>
             <div className="flex gap-2">
-              <button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full shadow-lg"><Ruler size={22} className="text-emerald-400" /></button>
-              <button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 p-3.5 rounded-full shadow-lg"><Layers size={22} className="text-blue-400" /></button>
+              <button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3 rounded-full shadow-2xl active:scale-95 transition-all text-emerald-400"><Ruler size={18} /></button>
+              <button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3 rounded-full shadow-2xl active:scale-95 transition-all text-blue-400"><Layers size={18} /></button>
             </div>
           </div>
+          
           <main className="flex-1">
             <MapContainer center={[0, 0]} zoom={2} className="h-full w-full custom-map-container" zoomControl={false} attributionControl={false}>
               <TileLayer url={mapStyle === 'Street' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} maxZoom={22} maxNativeZoom={19} />
@@ -476,12 +438,16 @@ const App: React.FC = () => {
                         const prev = arr[i - 1];
                         return <Polyline key={i} positions={[[prev.lat, prev.lng], [p.lat, p.lng]]} color={p.type === 'bunker' ? '#f59e0b' : '#10b981'} weight={p.type === 'bunker' ? 7 : 5} />;
                       })}
-                      {(viewingRecord || mapCompleted) && <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.2} weight={0} />}
-                      {(viewingRecord || mapCompleted) && greenAnalysis?.pA && greenAnalysis?.pB && (
-                        <Polyline positions={[[greenAnalysis.pA.lat, greenAnalysis.pA.lng], [greenAnalysis.pB.lat, greenAnalysis.pB.lng]]} color="#facc15" weight={2} opacity={0.8} />
-                      )}
-                      {(viewingRecord || mapCompleted) && greenAnalysis?.pC && greenAnalysis?.pD && (
-                        <Polyline positions={[[greenAnalysis.pC.lat, greenAnalysis.pC.lng], [greenAnalysis.pD.lat, greenAnalysis.pD.lng]]} color="#ffffff" weight={1} dashArray="5, 5" opacity={0.6} />
+                      {(viewingRecord || mapCompleted) && (
+                        <>
+                          {(() => {
+                            const pts = viewingRecord?.points || mapPoints;
+                            const first = pts[0];
+                            const last = pts[pts.length - 1];
+                            return <Polyline positions={[[last.lat, last.lng], [first.lat, first.lng]]} color={last.type === 'bunker' ? '#f59e0b' : '#10b981'} weight={last.type === 'bunker' ? 7 : 5} />;
+                          })()}
+                          <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.2} weight={0} />
+                        </>
                       )}
                     </>
                   )}
@@ -489,85 +455,136 @@ const App: React.FC = () => {
               )}
             </MapContainer>
           </main>
-          <div className="absolute inset-x-0 bottom-0 z-[1000] p-4 pointer-events-none flex flex-col gap-4 items-center">
-            <div className="flex flex-col gap-4 w-full max-w-sm">
-              {view === 'track' ? (
-                <>
-                  <div className="pointer-events-auto flex gap-2 w-full">
-                    <button onClick={() => { if (!trkActive) { setTrkActive(true); setTrkStart(pos); setTrkPivots([]); } else setShowEndConfirm(true); }} className={`flex-1 h-16 rounded-3xl font-black text-lg uppercase border border-white/10 shadow-lg ${trkActive ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}>
-                      <span className="flex items-center justify-center gap-2"><Navigation2 size={24} /> {trkActive ? 'FINISH' : 'START'}</span>
+
+          <div className="absolute inset-x-0 bottom-0 z-[1000] p-4 pointer-events-none flex flex-col gap-3 items-center pb-10">
+            <div className="flex flex-col gap-3 w-full max-w-[340px]">
+              
+              <div className="pointer-events-auto bg-slate-900 border border-white/20 rounded-[2.5rem] p-4 w-full shadow-2xl">
+                <div className="flex justify-center mb-4">
+                  <SignalStatus pos={pos} units={units} />
+                </div>
+                {view === 'track' ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex-[1.2] min-w-0 flex flex-col items-center">
+                      <span className="text-[9px] font-black text-white/40 uppercase mb-0.5 tracking-widest">Dist</span>
+                      <FitText maxFontSize={52} className="font-black text-emerald-400 leading-none tracking-tight">
+                        {viewingRecord ? viewingRecord.primaryValue.replace(/[a-z²]/gi, '') : formatDist(accumulatedDist, units)}
+                        <span className="text-[12px] ml-1 font-bold text-emerald-400/50">{units === 'Yards' ? 'yd' : 'm'}</span>
+                      </FitText>
+                    </div>
+                    <div className="h-10 w-px bg-white/10 shrink-0"></div>
+                    <div className="flex-1 min-w-0 flex flex-col items-center">
+                      <span className="text-[9px] font-black text-white/40 uppercase mb-0.5 tracking-widest">Elev</span>
+                      <FitText maxFontSize={52} className="font-black text-amber-400 leading-none tracking-tight">
+                        {viewingRecord ? viewingRecord.secondaryValue?.replace('Elev: ', '').replace(/[a-z²]/gi, '') : ((elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units))}
+                        <span className="text-[12px] ml-1 font-bold text-amber-400/50">{units === 'Yards' ? 'ft' : 'm'}</span>
+                      </FitText>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 mb-6">
+                      <div className="text-center flex flex-col items-center justify-center">
+                        <span className="text-white/40 text-[8px] font-black uppercase tracking-[0.2em] mb-1">Area</span>
+                        <div className="text-3xl font-black text-emerald-400 leading-none">
+                          {greenAnalysis ? Math.round(greenAnalysis.area * (units === 'Yards' ? 1.196 : 1)) : '--'}
+                          <span className="text-[11px] ml-0.5 opacity-40 font-black">{units === 'Yards' ? 'yd²' : 'm²'}</span>
+                        </div>
+                      </div>
+                      <div className="text-center flex flex-col items-center justify-center">
+                        <span className="text-white/40 text-[8px] font-black uppercase tracking-[0.2em] mb-1">Perim</span>
+                        <div className="text-3xl font-black text-blue-400 leading-none">
+                          {greenAnalysis ? formatDist(greenAnalysis.perimeter, units) : '--'}
+                          <span className="text-[11px] ml-0.5 opacity-40 font-black">{units === 'Yards' ? 'yd' : 'm'}</span>
+                        </div>
+                      </div>
+                      <div className="text-center flex flex-col items-center justify-center">
+                        <span className="text-white/40 text-[8px] font-black uppercase tracking-[0.2em] mb-1">Bunk%</span>
+                        <div className="text-3xl font-black text-orange-400 leading-none">
+                          {greenAnalysis?.bunkerPct ?? '--'}
+                          <span className="text-[11px] ml-0.5 opacity-40 font-black">%</span>
+                        </div>
+                      </div>
+                    </div>
+                    {(mapCompleted || viewingRecord) && greenAnalysis && (
+                      <div className="bg-white/[0.05] rounded-3xl p-4 border border-white/10 flex items-center justify-between shadow-inner">
+                        <div className="flex-1 pr-2">
+                          <span className="block text-[7px] font-black text-blue-400 uppercase tracking-widest mb-1">Effective Diameter (EGD)</span>
+                          <div className="text-5xl font-black text-yellow-400 leading-none">
+                            {greenAnalysis.egd}
+                            <span className="text-[14px] font-black ml-1.5 opacity-40">YD</span>
+                          </div>
+                          {greenAnalysis.isL && <span className="inline-block bg-amber-500 text-[8px] font-black text-black px-2 py-0.5 rounded-full mt-2 shadow-lg">L-SHAPE</span>}
+                        </div>
+                        <div className="flex flex-col gap-1 items-end shrink-0 pl-3 border-l border-white/10">
+                          <div className="text-right">
+                            <span className="block text-[8px] font-black text-white uppercase leading-none mb-1">Length</span>
+                            <span className="text-lg font-black text-white leading-tight tabular-nums">{greenAnalysis.length?.toFixed(1)}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="block text-[8px] font-black text-white uppercase leading-none mb-1">Width</span>
+                            <span className="text-lg font-black text-white leading-tight tabular-nums">{greenAnalysis.width?.toFixed(1)}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="block text-[8px] font-black text-white uppercase leading-none mb-1">Ratio</span>
+                            <span className="text-sm font-black text-blue-400 leading-none tabular-nums">{greenAnalysis.ratio?.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="pointer-events-auto flex gap-2 w-full">
+                {view === 'track' ? (
+                  <>
+                    <button 
+                      onClick={() => { if (!trkActive) { setTrkActive(true); setTrkStart(pos); setTrkPivots([]); } else setShowEndConfirm(true); }} 
+                      className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase border-2 shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}
+                    >
+                      <Navigation2 size={14} /> {trkActive ? 'FINISH' : 'START'}
                     </button>
                     {trkActive && (
-                      <button onClick={() => trkPivots.length < 3 && pos && setTrkPivots([...trkPivots, pos])} className="flex-1 h-16 rounded-3xl bg-blue-600 text-white font-black text-lg uppercase shadow-lg">
-                        <span className="flex items-center justify-center gap-2"><Anchor size={20} /> PIVOT {trkPivots.length}/3</span>
-                      </button>
+                      <div className="flex-1 flex gap-1">
+                        <button 
+                          onClick={() => trkPivots.length < 3 && pos && setTrkPivots([...trkPivots, pos])} 
+                          className="flex-1 h-11 rounded-full bg-blue-600 border-2 border-blue-500 text-white font-black text-[11px] tracking-[0.15em] uppercase shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Anchor size={14} /> PIVOT {trkPivots.length}/3
+                        </button>
+                        {trkPivots.length > 0 && (
+                          <button 
+                            onClick={() => setTrkPivots(prev => prev.slice(0, -1))}
+                            className="w-11 h-11 bg-slate-800 border-2 border-white/20 text-white rounded-full flex items-center justify-center active:scale-90 shadow-xl"
+                          >
+                            <RotateCcw size={16} />
+                          </button>
+                        )}
+                      </div>
                     )}
-                  </div>
-                  <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-4 w-full shadow-2xl">
-                    <div className="flex justify-center mb-3">
-                      <SignalStatus pos={pos} units={units} />
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex-[1.2] min-w-0 flex flex-col items-center">
-                        <span className="text-[10px] font-black text-white/40 uppercase mb-1 tracking-wider">Distance</span>
-                        <div className="w-full">
-                          <FitText maxFontSize={56} className="font-black text-emerald-400 leading-none">
-                            {viewingRecord ? viewingRecord.primaryValue.replace(/[a-z²]/gi, '') : formatDist(accumulatedDist, units)}
-                            <span className="text-[14px] ml-1 font-bold text-emerald-400/60">{units === 'Yards' ? 'yd' : 'm'}</span>
-                          </FitText>
-                        </div>
-                      </div>
-                      <div className="h-12 w-px bg-white/10 shrink-0"></div>
-                      <div className="flex-1 min-w-0 flex flex-col items-center">
-                        <span className="text-[10px] font-black text-white/40 uppercase mb-1 tracking-wider">Elevation</span>
-                        <div className="w-full">
-                          <FitText maxFontSize={56} className="font-black text-amber-400 leading-none">
-                            {viewingRecord ? viewingRecord.secondaryValue?.replace('Elev: ', '').replace(/[a-z²]/gi, '') : ((elevDelta >= 0 ? '+' : '') + formatAlt(elevDelta, units))}
-                            <span className="text-[14px] ml-1 font-bold text-amber-400/60">{units === 'Yards' ? 'ft' : 'm'}</span>
-                          </FitText>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="pointer-events-auto flex gap-2 w-full">
-                    <button onClick={() => { if (mapCompleted) { setMapPoints([]); setMapCompleted(false); setMapActive(false); } else if (!mapActive) { setMapPoints(pos ? [pos] : []); setMapActive(true); } else { handleFinalizeGreen(); } }} className="flex-1 h-16 rounded-3xl font-black text-lg uppercase bg-emerald-600 text-white shadow-lg">
-                      {mapActive ? 'CLOSE GREEN' : (mapCompleted ? 'NEW GREEN' : 'START GREEN')}
+                  </>
+                ) : (
+                  <>
+                    <button 
+                      onClick={() => { if (mapCompleted) { setMapPoints([]); setMapCompleted(false); setMapActive(false); } else if (!mapActive) { setMapPoints(pos ? [pos] : []); setMapActive(true); } else { handleFinalizeGreen(); } }} 
+                      className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase border-2 shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}
+                    >
+                      {mapActive ? 'COMPLETE' : (mapCompleted ? 'RESTART' : 'NEW GREEN')}
                     </button>
                     {mapActive && (
                       <button 
                         onPointerDown={() => setIsBunker(true)} 
                         onPointerUp={() => setIsBunker(false)} 
                         onPointerLeave={() => setIsBunker(false)} 
-                        className={`flex-1 h-16 rounded-3xl font-black text-lg uppercase shadow-lg transition-all duration-75 active:scale-95 ${isBunker ? 'bg-amber-600 text-white ring-4 ring-white/30' : 'bg-amber-500/20 text-amber-400 border-2 border-amber-500/40'}`}
+                        className={`flex-1 h-11 rounded-full font-black text-[11px] tracking-[0.15em] uppercase shadow-xl transition-all border-2 flex items-center justify-center gap-2 ${isBunker ? 'bg-orange-600 border-orange-500 text-white' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}
                       >
                         {isBunker ? 'RECORDING...' : 'BUNKER (HOLD)'}
                       </button>
                     )}
-                  </div>
-                  <div className="pointer-events-auto bg-[#0f172a]/95 border border-white/10 rounded-[2.5rem] p-4 w-full shadow-2xl">
-                    <div className="flex justify-center mb-4">
-                      <SignalStatus pos={pos} units={units} />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase">Area</span><div className="text-xl font-black text-emerald-400">{greenAnalysis ? Math.round(greenAnalysis.area * (units === 'Yards' ? 1.196 : 1)) : '--'}<span className="text-[9px] ml-1">{units === 'Yards' ? 'yd²' : 'm²'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase">Perimeter</span><div className="text-xl font-black text-blue-400">{greenAnalysis ? formatDist(greenAnalysis.perimeter, units) : '--'}<span className="text-[9px] ml-1">{units === 'Yards' ? 'yd' : 'm'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase">Bunker %</span><div className="text-xl font-black text-orange-400">{greenAnalysis?.bunkerPct ?? '--'}%</div></div>
-                    </div>
-                    {(mapCompleted || viewingRecord) && greenAnalysis && (
-                      <div className="bg-white/[0.03] rounded-2xl p-3 border border-white/5">
-                        <div className="flex items-center justify-between mb-2"><span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Effective Green Diameter (EGD)</span>{greenAnalysis.isL && <span className="bg-amber-500 text-[7px] font-black text-black px-2 py-0.5 rounded-full">L-SHAPE DETECTED</span>}</div>
-                        <div className="flex items-end justify-between">
-                          <div className="text-4xl font-black text-yellow-400 leading-none">{greenAnalysis.egd}<span className="text-[12px] font-bold ml-1 opacity-40">YARDS</span></div>
-                          <div className="text-right"><span className="block text-[8px] font-black text-white/30 uppercase tracking-tighter">L: {greenAnalysis.length?.toFixed(1)}yd | W: {greenAnalysis.width?.toFixed(1)}yd</span><span className="block text-[8px] font-black text-white/30 uppercase tracking-tighter">Ratio: {greenAnalysis.ratio?.toFixed(2)}:1</span></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
