@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MapContainer, TileLayer, CircleMarker, Polyline, Circle, useMap, Polygon } from 'react-leaflet';
@@ -394,7 +393,7 @@ const App: React.FC = () => {
         };
 
         if (isGreen) {
-          const area = calculatePolygonAreaForImport(points);
+          const area = calculateArea(points);
           const egdObj = getEGDAnalysis(points);
           record.primaryValue = `${Math.round(area * (units === 'Yards' ? 1.196 : 1))}${units === 'Yards' ? 'yd²' : 'm²'}`;
           record.egdValue = egdObj ? `${egdObj.egd} yd` : '--';
@@ -418,22 +417,6 @@ const App: React.FC = () => {
     };
     reader.readAsText(file);
     e.target.value = '';
-  };
-
-  const calculatePolygonAreaForImport = (points: GeoPoint[]) => {
-    if (points.length < 3) return 0;
-    const R = 6371e3;
-    const lat0 = points[0].lat * Math.PI / 180;
-    const coords = points.map(p => ({
-      x: p.lng * Math.PI / 180 * R * Math.cos(lat0),
-      y: p.lat * Math.PI / 180 * R
-    }));
-    let area = 0;
-    for (let i = 0; i < coords.length; i++) {
-      const j = (i + 1) % coords.length;
-      area += coords[i].x * coords[j].y - coords[j].x * coords[i].y;
-    }
-    return Math.abs(area) / 2;
   };
 
   return (
