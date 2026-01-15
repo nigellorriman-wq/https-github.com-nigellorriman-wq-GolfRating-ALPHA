@@ -443,7 +443,9 @@ const App: React.FC = () => {
       {view === 'landing' ? (
         <div className="flex-1 flex flex-col p-6 overflow-y-auto no-scrollbar animate-in fade-in duration-700">
           <header className="mb-12 mt-8 flex flex-col items-center text-center">
-            <h1 className="text-5xl font-black tracking-tighter text-blue-500">Scottish Golf</h1>
+            <h1 className="text-5xl tracking-tighter font-semibold" style={{ color: '#2563eb' }}>
+              Scottish Golf
+            </h1>
             <p className="text-white text-[11px] font-black tracking-[0.4em] uppercase mt-2 opacity-70">Course Rating Toolkit</p>
           </header>
 
@@ -506,7 +508,12 @@ const App: React.FC = () => {
       ) : (
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 flex justify-between items-start pointer-events-none">
-            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all"><ChevronLeft size={18} className="text-emerald-400" /><span className="text-[11px] font-black uppercase tracking-widest text-white">Back</span></button>
+            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
+              <ChevronLeft size={18} className="text-emerald-400" />
+              <span className="text-[11px] uppercase tracking-widest font-semibold" style={{ color: '#2563eb' }}>
+                Scottish Golf
+              </span>
+            </button>
             <div className="flex gap-2">
               <button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3.5 rounded-full text-emerald-400 shadow-2xl active:scale-90"><Ruler size={20} /></button>
               <button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3.5 rounded-full text-blue-400 shadow-2xl active:scale-90"><Layers size={20} /></button>
