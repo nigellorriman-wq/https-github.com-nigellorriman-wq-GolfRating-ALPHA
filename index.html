@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Scottish Golf | Course Rating Toolkit</title>
     
+    <!-- Babel for on-the-fly browser transpilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <script type="importmap">
@@ -17,9 +18,6 @@
     "lucide-react": "https://esm.sh/lucide-react@0.292.0?external=react",
     "react-leaflet": "https://esm.sh/react-leaflet@4.2.1?external=react,react-dom,leaflet",
     "leaflet": "https://esm.sh/leaflet@1.9.4",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "path": "https://esm.sh/path@^0.12.7",
     "vite": "https://esm.sh/vite@^7.3.1",
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
@@ -38,19 +36,49 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
     
     <style>
-      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
-      html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: #020617; }
-      body { font-family: 'Open Sans', sans-serif; font-weight: 300; overflow: hidden; position: fixed; }
-      #root { width: 100%; height: 100%; display: flex; flex-direction: column; }
-      .leaflet-container { height: 100% !important; width: 100% !important; background: #020617 !important; border: 0 !important; }
+      * { 
+        box-sizing: border-box; 
+        -webkit-tap-highlight-color: transparent; 
+        outline: none; 
+      }
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: #020617;
+      }
+      body {
+        font-family: 'Open Sans', sans-serif;
+        font-weight: 300;
+        overflow: hidden; 
+        position: fixed;
+      }
+      #root { 
+        width: 100%; 
+        height: 100%; 
+        display: flex;
+        flex-direction: column;
+      }
+      .leaflet-container { 
+        height: 100% !important; 
+        width: 100% !important; 
+        background: #020617 !important; 
+        border: 0 !important; 
+      }
     </style>
 </head>
 <body>
     <div id="root"></div>
     <script type="text/babel" data-type="module" data-presets="typescript,react" src="./index.tsx"></script>
     <script>
-      window.addEventListener('error', function(e) { console.error('Runtime Error:', e.message); });
-      window.addEventListener('unhandledrejection', function(e) { console.error('Promise Rejection:', e.reason); });
+      // Diagnostic logging
+      window.addEventListener('error', function(e) {
+        console.error('Runtime Error:', e.message, 'at', e.filename);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('Unhandled Promise:', e.reason);
+      });
     </script>
 </body>
 </html>
