@@ -1,4 +1,16 @@
-import { GeoPoint, UnitSystem } from '../types.ts';
+
+// Fix: Define local interfaces to avoid module resolution errors for missing or empty types.ts
+export type UnitSystem = 'Yards' | 'Metres';
+
+export interface GeoPoint {
+  lat: number;
+  lng: number;
+  alt: number | null;
+  accuracy: number;
+  altAccuracy: number | null;
+  timestamp: number;
+  type?: 'green' | 'bunker';
+}
 
 export const calculateDistance = (p1: GeoPoint, p2: GeoPoint): number => {
   const R = 6371e3; // metres
@@ -16,13 +28,13 @@ export const calculateDistance = (p1: GeoPoint, p2: GeoPoint): number => {
 };
 
 export const toDisplayDistance = (meters: number, unit: UnitSystem): string => {
-  const value = unit === 'Meters' ? meters : meters * 1.09361;
+  const value = unit === 'Metres' ? meters : meters * 1.09361;
   return value.toFixed(1);
 };
 
 export const toDisplayElevation = (meters: number, unit: UnitSystem): string => {
   // Requirement: Elevation in Feet or Meters
-  const value = unit === 'Meters' ? meters : meters * 3.28084;
+  const value = unit === 'Metres' ? meters : meters * 3.28084;
   return value.toFixed(1);
 };
 
