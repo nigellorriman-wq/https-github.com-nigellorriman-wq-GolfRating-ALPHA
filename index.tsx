@@ -514,7 +514,7 @@ const App: React.FC = () => {
 
               {view === 'track' && (viewingRecord?.pivots || trkPivots).map((p, i) => (
                 <CircleMarker key={i} center={[p.lat, p.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />
-              )}
+              ))}
 
               {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord) && (
                 <Polyline 
