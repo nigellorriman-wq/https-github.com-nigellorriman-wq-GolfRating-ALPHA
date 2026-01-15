@@ -15,12 +15,18 @@ import {
   MapPin,
   RotateCcw,
   Download,
-  Upload
+  Upload,
+  HelpCircle,
+  X,
+  AlertCircle,
+  Cpu,
+  Eye
 } from 'lucide-react';
 
 /** --- TYPES --- **/
-type AppView = 'landing' | 'track' | 'green';
+type AppView = 'landing' | 'track' | 'green' | 'manual';
 type UnitSystem = 'Yards' | 'Metres';
+type FontSize = 'small' | 'medium' | 'large';
 
 interface GeoPoint {
   lat: number;
@@ -42,6 +48,58 @@ interface SavedRecord {
   points: GeoPoint[];
   pivots?: GeoPoint[];
 }
+
+/** --- DOCUMENTATION CONTENT --- **/
+const USER_MANUAL = [
+  {
+    title: "Quick Start",
+    color: "text-white",
+    icon: <BookOpen className="text-white" />,
+    content: "The Scottish Golf Rating Toolkit (ALPHA) is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App will still work, though you may lose the background mapping."
+  },
+  {
+    title: "Distance Tracker",
+    color: "text-blue-400",
+    icon: <Navigation2 className="text-blue-400" />,
+    content: "Tap 'Start' when you are at the fixed tee marker and ready to start tracking the distance. Use 'Pivot' (max 3) at dog-leg corners to measure the true path of the hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other. Refer to 'Sensor Diagnostice' (below) for information on how elevations are being determined."
+  },
+  {
+    title: "Green Mapper",
+    color: "text-emerald-400",
+    icon: <Target className="text-emerald-400" />,
+    content: "Start at any point on the edge of the green. Walk the perimeter. The app automatically 'Closes' the loop when you return to within 1m of your start point, or you can force it to close by hitting the button. Results show total Area and Perimeter length."
+  },
+  {
+    title: "Recording Bunkers",
+    color: "text-orange-400",
+    icon: <AlertCircle className="text-orange-400" />,
+    content: "While walking the green edge, hold the 'Bunker' button when passing a bunker segment and release when you get to the end. This marks those points as sand. The panel will show what percentage of the green's perimeter is guarded by sand."
+  },
+  {
+    title: "Effective Green Diameter",
+    color: "text-emerald-400",
+    icon: <Target className="text-emerald-400" />,
+    content: "Effective Green Diameter (EGD) is required when measuring a green. When a green is mapped and closed the EGD will automatically be displayed, together with the raw data and dashed lines showing the dimensions used. Oddly-shaped greens are more tricky, but by using a \"concave hull check\" it should at least recognise an L-shaped green. In these circumstances, EGD should show the raw dimension data to allow the rater to make their weighting adjustments - as per Course Rating System Manual (Jan 2024 Section 13D [two portions])."
+  },
+  {
+    title: "Sensor Diagnostics",
+    color: "text-blue-400",
+    icon: <Cpu className="text-blue-400" />,
+    content: "Blue Light (Barometric): Highest precision elevation using your phone's pressure sensor (if it has one). Emerald Light (GNSS 3D): Standard GPS altitude. Amber Light: Searching for vertical lock."
+  },
+  {
+    title: "Data export",
+    color: "text-yellow-400",
+    icon: <BookOpen className="text-yellow-400" />,
+    content: "Whenever you save a track or green area, the data appears at the bottom of the homescreen. Select a result and it will show you the results again. Hitting the bin icon will delete an individual record. You can also save all results to a KML file, which will be stored in your downloads folder. The filename will be the current date and time. KML files can be opened in GIS packages, such as Google Earth or Google Maps for analysis and archiving purposes."
+  },
+  {
+    title: "Help and suggestions",
+    color: "text-red-400",
+    icon: <Eye className="text-red-400" />,
+    content: "This App is under development. If you require assistance or have any suggestions, please email me at nigel.lorriman@gmail.com"
+  }
+];
 
 /** --- UTILITIES --- **/
 const calculateDistance = (p1: {lat: number, lng: number}, p2: {lat: number, lng: number}): number => {
@@ -206,6 +264,66 @@ const MapController: React.FC<{
     }
   }, [pos, active, map, completed, mapPoints, viewingRecord, mode]);
   return null;
+};
+
+const UserManual: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [fontSize, setFontSize] = useState<FontSize>('small');
+
+  const cycleFontSize = () => {
+    if (fontSize === 'small') setFontSize('medium');
+    else if (fontSize === 'medium') setFontSize('large');
+    else setFontSize('small');
+  };
+
+  const getFontSizeClass = () => {
+    if (fontSize === 'medium') return 'text-base';
+    if (fontSize === 'large') return 'text-lg';
+    return 'text-sm';
+  };
+
+  const getTitleSizeClass = () => {
+    if (fontSize === 'medium') return 'text-2xl';
+    if (fontSize === 'large') return 'text-3xl';
+    return 'text-xl';
+  };
+
+  return (
+    <div className="fixed inset-0 z-[2000] bg-[#020617] flex flex-col p-6 overflow-y-auto no-scrollbar animate-in slide-in-from-bottom duration-300">
+      <div className="flex justify-between items-center mb-8 mt-4">
+        <h2 className="text-3xl font-black text-blue-500 uppercase tracking-tighter">User Manual</h2>
+        <div className="flex gap-3">
+          <button 
+            onClick={cycleFontSize} 
+            className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-white active:scale-90 transition-all border border-white/10"
+          >
+            <div className="flex items-baseline gap-0.5 pointer-events-none">
+              <span className="font-bold text-lg leading-none">T</span>
+              <span className="font-bold text-xs leading-none">T</span>
+            </div>
+          </button>
+          <button onClick={onClose} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-white active:scale-90 transition-all border border-white/10">
+            <X size={24} />
+          </button>
+        </div>
+      </div>
+      
+      <div className="flex flex-col gap-8 pb-20">
+        {USER_MANUAL.map((section, idx) => (
+          <div key={idx} className="bg-slate-900/50 border border-white/5 rounded-[2rem] p-6 shadow-xl">
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center shrink-0">
+                {section.icon}
+              </div>
+              <h3 className={`font-black uppercase tracking-tight transition-all duration-200 ${section.color} ${getTitleSizeClass()}`}>{section.title}</h3>
+            </div>
+            <p className={`text-slate-400 leading-relaxed font-medium transition-all duration-200 ${getFontSizeClass()}`}>
+              {section.content}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 const App: React.FC = () => {
@@ -444,7 +562,7 @@ const App: React.FC = () => {
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Green mapping, bunker proportion and EGD</p>
             </button>
 
-            <button onClick={() => window.open('https://example.com/user-manual', '_blank')} className="mt-2 bg-slate-800/50 border border-white/10 rounded-[1.8rem] py-6 flex items-center justify-center gap-4 active:bg-slate-700 transition-colors">
+            <button onClick={() => setView('manual')} className="mt-2 bg-slate-800/50 border border-white/10 rounded-[1.8rem] py-6 flex items-center justify-center gap-4 active:bg-slate-700 transition-colors">
               <BookOpen size={20} className="text-blue-400" />
               <div className="flex flex-col items-start">
                 <span className="text-[11px] font-black uppercase tracking-widest text-white">Open User Manual</span>
@@ -488,13 +606,15 @@ const App: React.FC = () => {
             )}
           </footer>
         </div>
+      ) : view === 'manual' ? (
+        <UserManual onClose={() => setView('landing')} />
       ) : (
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 flex justify-between items-start pointer-events-none">
             <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
               <ChevronLeft size={18} className="text-emerald-400" />
               <span className="text-[11px] uppercase tracking-widest font-semibold" style={{ color: '#2563eb' }}>
-                Scottish Golf
+                Home
               </span>
             </button>
             <div className="flex gap-2">
