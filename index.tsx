@@ -59,7 +59,7 @@ const USER_MANUAL = [
     title: "Quick Start",
     color: "text-white",
     icon: <BookOpen className="text-white" />,
-    content: "Scottish Golf v2 is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App will still work, though you may lose the background mapping."
+    content: "Scottish Golf Course Rating Toolkit is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App will still work, though you may lose the background mapping."
   },
   {
     title: "Distance Tracker",
@@ -89,7 +89,11 @@ const USER_MANUAL = [
     title: "Sensor Diagnostics",
     color: "text-blue-400",
     icon: <Cpu className="text-blue-400" />,
-    content: "Blue Light (Barometric): Highest precision elevation using your phone's pressure sensor (if it has one). Emerald Light (GNSS 3D): Standard GPS altitude. Amber Light: Searching for vertical lock."
+    content: (
+      <>
+        GPS alone isn't accurate enough for determining altitude changes, but if your mobile device contains a barometer sensor this App should use it by default. If it does exist it will indicate its use as follows... <span className="text-blue-500 font-black">Blue Light</span> (Barometric): Highest precision elevation using your phone's pressure sensor (if it has one). <span className="text-emerald-500 font-black">Emerald Light</span> (GNSS 3D): Standard GPS altitude. <span className="text-amber-500 font-black">Amber Light</span>: Searching for vertical lock.
+      </>
+    )
   },
   {
     title: "Data import/export",
@@ -370,7 +374,7 @@ const UserManual: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                </div>
                <h3 className={`text-xl font-black uppercase tracking-tight ${section.color}`}>{section.title}</h3>
              </div>
-             <p className="text-slate-400 leading-relaxed font-semibold text-sm">{section.content}</p>
+             <div className="text-slate-400 leading-relaxed font-semibold text-sm">{section.content}</div>
           </div>
         ))}
       </div>
