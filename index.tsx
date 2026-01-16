@@ -23,7 +23,8 @@ import {
   Eye,
   Diameter,
   Plus,
-  Minus
+  Minus,
+  CaseSensitive
 } from 'lucide-react';
 
 /** --- TYPES --- **/
@@ -56,7 +57,7 @@ interface SavedRecord {
 /** --- DOCUMENTATION CONTENT --- **/
 const USER_MANUAL = [
   {
-    title: "Quick Start",
+    title: "Introduction",
     color: "text-white",
     icon: <BookOpen className="text-white" />,
     content: "Scottish Golf Course Rating Toolkit is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App will still work, though you may lose the background mapping."
@@ -196,6 +197,7 @@ const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false)
   const xA = toX(pA), yA = toY(pA);
   const xB = toX(pB), yB = toY(pB);
   const dx = xB - xA, dy = yB - yA;
+  // Fix: Correct variable name and ensure mag is declared before use in division
   const mag = Math.sqrt(dx * dx + dy * dy);
   if (mag === 0) return null;
 
@@ -357,13 +359,34 @@ const MapController: React.FC<{
 };
 
 const UserManual: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [fontSize, setFontSize] = useState<FontSize>('medium');
+
+  const cycleFontSize = () => {
+    if (fontSize === 'small') setFontSize('medium');
+    else if (fontSize === 'medium') setFontSize('large');
+    else setFontSize('small');
+  };
+
+  const textClasses = useMemo(() => {
+    switch (fontSize) {
+      case 'small': return 'text-[11px] leading-relaxed';
+      case 'large': return 'text-lg leading-relaxed';
+      default: return 'text-sm leading-relaxed';
+    }
+  }, [fontSize]);
+
   return (
     <div className="fixed inset-0 z-[2000] bg-[#020617] flex flex-col p-6 overflow-y-auto no-scrollbar">
       <div className="flex justify-between items-center mb-8 mt-4">
         <h2 className="text-3xl font-black text-blue-500 uppercase tracking-tighter">User Manual</h2>
-        <button onClick={onClose} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-white active:scale-90 transition-all border border-white/10">
-          <X size={24} />
-        </button>
+        <div className="flex gap-2">
+          <button onClick={cycleFontSize} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-blue-400 active:scale-90 transition-all border border-white/10 shadow-lg" title="Cycle Font Size">
+            <CaseSensitive size={24} strokeWidth={2.5} />
+          </button>
+          <button onClick={onClose} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-white active:scale-90 transition-all border border-white/10 shadow-lg">
+            <X size={24} />
+          </button>
+        </div>
       </div>
       <div className="flex flex-col gap-8 pb-20">
         {USER_MANUAL.map((section, idx) => (
@@ -374,7 +397,7 @@ const UserManual: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                </div>
                <h3 className={`text-xl font-black uppercase tracking-tight ${section.color}`}>{section.title}</h3>
              </div>
-             <div className="text-slate-400 leading-relaxed font-semibold text-sm">{section.content}</div>
+             <div className={`text-slate-400 font-semibold ${textClasses}`}>{section.content}</div>
           </div>
         ))}
       </div>
