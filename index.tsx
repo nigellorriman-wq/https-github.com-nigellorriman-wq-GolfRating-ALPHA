@@ -21,7 +21,9 @@ import {
   AlertCircle,
   Cpu,
   Eye,
-  Diameter
+  Diameter,
+  Plus,
+  Minus
 } from 'lucide-react';
 
 /** --- TYPES --- **/
@@ -48,6 +50,7 @@ interface SavedRecord {
   egdValue?: string;
   points: GeoPoint[];
   pivots?: GeoPoint[];
+  holeNumber?: number;
 }
 
 /** --- DOCUMENTATION CONTENT --- **/
@@ -98,7 +101,7 @@ const USER_MANUAL = [
     title: "Help and suggestions",
     color: "text-red-400",
     icon: <Eye className="text-red-400" />,
-    content: "This App is under development. If you require assistance or have any suggestions, please email me at nigel.lorriman@gmail.com"
+    content: "This App is under development. If you require assistance or have any suggestions, please email me at nigel.lorriman@gmail.com  Version - Jan 2026"
   }
 ];
 
@@ -164,7 +167,7 @@ const getWidthAtAxisPoint = (midX: number, midY: number, nx: number, ny: number,
   return { minT: Math.min(...intersections), maxT: Math.max(...intersections) };
 };
 
-const getEGDAnalysis = (points: GeoPoint[]) => {
+const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false) => {
   if (points.length < 3) return null;
   const R = 6371e3;
   let maxD = 0;
@@ -221,31 +224,36 @@ const getEGDAnalysis = (points: GeoPoint[]) => {
   let w1_yds = 0, w3_yds = 0;
   let pC1, pD1, pC3, pD3;
 
-  if (w1 && w3) {
-    w1_yds = (w1.maxT - w1.minT) * 1.09361;
-    w3_yds = (w3.maxT - w3.minT) * 1.09361;
-    // If the two section widths vary significantly (> 25% difference)
-    if (Math.abs(w1_yds - w3_yds) / Math.max(w1_yds, w3_yds) > 0.25) {
-      isInconsistent = true;
-      method = "One dimension not consistent";
-      const avgShort = (w1_yds + w3_yds) / 2;
-      egd_yds = (L_yds + avgShort) / 2;
-      pC1 = fromXY(q1X + nx * w1.maxT, q1Y + ny * w1.maxT);
-      pD1 = fromXY(q1X + nx * w1.minT, q1Y + ny * w1.minT);
-      pC3 = fromXY(q3X + nx * w3.maxT, q3Y + ny * w3.maxT);
-      pD3 = fromXY(q3X + nx * w3.minT, q3Y + ny * w3.minT);
+  if (forceSimpleAverage) {
+    egd_yds = (L_yds + W_yds) / 2;
+    method = "Average (L+W)/2";
+  } else {
+    if (w1 && w3) {
+      w1_yds = (w1.maxT - w1.minT) * 1.09361;
+      w3_yds = (w3.maxT - w3.minT) * 1.09361;
+      // If the two section widths vary significantly (> 25% difference)
+      if (Math.abs(w1_yds - w3_yds) / Math.max(w1_yds, w3_yds) > 0.25) {
+        isInconsistent = true;
+        method = "One dimension not consistent";
+        const avgShort = (w1_yds + w3_yds) / 2;
+        egd_yds = (L_yds + avgShort) / 2;
+        pC1 = fromXY(q1X + nx * w1.maxT, q1Y + ny * w1.maxT);
+        pD1 = fromXY(q1X + nx * w1.minT, q1Y + ny * w1.minT);
+        pC3 = fromXY(q3X + nx * w3.maxT, q3Y + ny * w3.maxT);
+        pD3 = fromXY(q3X + nx * w3.minT, q3Y + ny * w3.minT);
+      }
     }
-  }
 
-  if (!isInconsistent) {
-    if (ratio >= 3) {
-      egd_yds = (3 * W_yds + L_yds) / 4;
-      method = "One dimension three times the other";
-    } else if (ratio >= 2) {
-      egd_yds = (2 * W_yds + L_yds) / 3;
-      method = "One dimension twice the other";
-    } else {
-      egd_yds = (L_yds + W_yds) / 2;
+    if (!isInconsistent) {
+      if (ratio >= 3) {
+        egd_yds = (3 * W_yds + L_yds) / 4;
+        method = "One dimension three times the other";
+      } else if (ratio >= 2) {
+        egd_yds = (2 * W_yds + L_yds) / 3;
+        method = "One dimension twice the other";
+      } else {
+        egd_yds = (L_yds + W_yds) / 2;
+      }
     }
   }
   
@@ -291,12 +299,13 @@ const analyzeGreenShape = (points: GeoPoint[]) => {
       }
     });
 
+    // When "Two portions" is applied, force both sub-portions to use (L+W)/2
     return { 
       ...basic, 
       isLShape: true, 
       method: "Two portions",
-      s1: getEGDAnalysis(points.slice(0, elbowIdx + 1)), 
-      s2: getEGDAnalysis(points.slice(elbowIdx)) 
+      s1: getEGDAnalysis(points.slice(0, elbowIdx + 1), true), 
+      s2: getEGDAnalysis(points.slice(elbowIdx), true) 
     };
   }
 
@@ -380,6 +389,7 @@ const App: React.FC = () => {
   const [trkActive, setTrkActive] = useState(false);
   const [trkPoints, setTrkPoints] = useState<GeoPoint[]>([]);
   const [trkPivots, setTrkPivots] = useState<GeoPoint[]>([]);
+  const [holeNum, setHoleNum] = useState(1);
   
   const [mapActive, setMapActive] = useState(false);
   const [mapCompleted, setMapCompleted] = useState(false);
@@ -441,10 +451,11 @@ const App: React.FC = () => {
       primaryValue: `${areaVal}${units === 'Yards' ? 'yd²' : 'm²'}`, 
       secondaryValue: `Bunker: ${analysis?.bunkerPct}%`, 
       egdValue: egdStr,
-      points: mapPoints 
+      points: mapPoints,
+      holeNumber: holeNum 
     });
     setMapActive(false); setMapCompleted(true);
-  }, [mapPoints, units, analysis, saveRecord]);
+  }, [mapPoints, units, analysis, saveRecord, holeNum]);
 
   useEffect(() => {
     if (mapActive && pos) {
@@ -497,7 +508,8 @@ const App: React.FC = () => {
       const coords = item.points.map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
       kml += `
     <Placemark>
-      <name>${item.type} - ${new Date(item.date).toLocaleString()}</name>
+      <name>${item.type} - Hole ${item.holeNumber || '?'}</name>
+      <description>Hole:${item.holeNumber || '?'}</description>
       ${item.type === 'Green' ? `
       <Polygon><outerBoundaryIs><LinearRing><coordinates>${coords} ${item.points[0].lng},${item.points[0].lat},${item.points[0].alt || 0}</coordinates></LinearRing></outerBoundaryIs></Polygon>` : `
       <LineString><coordinates>${coords}</coordinates></LineString>`}
@@ -527,7 +539,21 @@ const App: React.FC = () => {
         const p = placemarks[i];
         const polygonNode = p.getElementsByTagName("Polygon")[0];
         const coordsNode = p.getElementsByTagName("coordinates")[0];
+        const descNode = p.getElementsByTagName("description")[0];
         const coordsStr = coordsNode?.textContent || "";
+        const descStr = descNode?.textContent || "";
+        
+        // Extract hole number from description or name
+        let extractedHole = 0;
+        const holeMatch = descStr.match(/Hole:(\d+)/);
+        if (holeMatch) {
+          extractedHole = parseInt(holeMatch[1]);
+        } else {
+          const nameNode = p.getElementsByTagName("name")[0];
+          const nameMatch = nameNode?.textContent?.match(/Hole\s+(\d+)/);
+          if (nameMatch) extractedHole = parseInt(nameMatch[1]);
+        }
+
         const points: GeoPoint[] = coordsStr.trim().split(/\s+/).map(c => {
           const parts = c.split(',').map(Number);
           return { lat: parts[1], lng: parts[0], alt: parts[2] || 0, accuracy: 0, altAccuracy: 0, timestamp: Date.now() };
@@ -541,7 +567,8 @@ const App: React.FC = () => {
           type: isActuallyGreen ? 'Green' : 'Track',
           points,
           primaryValue: 'Imported',
-          secondaryValue: 'KML Data'
+          secondaryValue: 'KML Data',
+          holeNumber: extractedHole > 0 ? extractedHole : undefined
         };
         if (isActuallyGreen) {
           const area = calculateArea(points);
@@ -569,6 +596,7 @@ const App: React.FC = () => {
 
   const handleOpenRecord = (record: SavedRecord) => {
     setViewingRecord(record);
+    if (record.holeNumber) setHoleNum(record.holeNumber);
     if (record.type === 'Track') {
       setView('track');
       setTrkActive(false);
@@ -633,7 +661,7 @@ const App: React.FC = () => {
                     <div key={item.id} className="relative shrink-0">
                       <button onClick={() => handleOpenRecord(item)} className="bg-slate-900 border border-white/10 px-6 py-5 rounded-[2rem] flex flex-col min-w-[170px] text-left shadow-lg active:scale-95 transition-transform">
                         <div className="flex justify-between items-start mb-1">
-                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{item.type}</span>
+                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{item.type} {item.holeNumber && ` - Hole ${item.holeNumber}`}</span>
                           {item.type === 'Green' ? <Target size={12} className="text-emerald-500/60" /> : <Navigation2 size={12} className="text-blue-500/60" />}
                         </div>
                         <span className="text-xl font-black text-white">{item.primaryValue}</span>
@@ -657,6 +685,11 @@ const App: React.FC = () => {
               <span className="text-[11px] uppercase tracking-widest font-semibold text-blue-500">Home</span>
             </button>
             <div className="flex gap-2">
+              {(trkActive || viewingRecord) && (
+                <div className="pointer-events-auto bg-slate-800 border border-white/20 w-[46px] h-[46px] rounded-full flex items-center justify-center shadow-2xl">
+                   <span className="text-xl font-black text-blue-400 tabular-nums">{holeNum}</span>
+                </div>
+              )}
               <button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3.5 rounded-full text-emerald-400 shadow-2xl active:scale-90"><Ruler size={20} /></button>
               <button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3.5 rounded-full text-blue-400 shadow-2xl active:scale-90"><Layers size={20} /></button>
             </div>
@@ -691,8 +724,20 @@ const App: React.FC = () => {
                         </>
                       )}
                       {analysis.shape.isLShape && (
-                        <>{analysis.shape.s1?.pA && <><Polyline positions={[[analysis.shape.s1.pA.lat, analysis.shape.s1.pA.lng], [analysis.shape.s1.pB.lat, analysis.shape.s1.pB.lng]]} color="#22d3ee" weight={5} /><Polyline positions={[[analysis.shape.s1.pC.lat, analysis.shape.s1.pC.lng], [analysis.shape.s1.pD.lat, analysis.shape.s1.pD.lng]]} color="#facc15" weight={5} /></>}
-                        {analysis.shape.s2?.pA && <><Polyline positions={[[analysis.shape.s2.pA.lat, analysis.shape.s2.pA.lng], [analysis.shape.s2.pB.lat, analysis.shape.s2.pB.lng]]} color="#22d3ee" weight={5} /><Polyline positions={[[analysis.shape.s2.pC.lat, analysis.shape.s2.pC.lng], [analysis.shape.s2.pD.lat, analysis.shape.s2.pD.lng]]} color="#facc15" weight={5} /></>}</>
+                        <>
+                          {analysis.shape.s1?.pA && (
+                            <>
+                              <Polyline positions={[[analysis.shape.s1.pA.lat, analysis.shape.s1.pA.lng], [analysis.shape.s1.pB.lat, analysis.shape.s1.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
+                              <Polyline positions={[[analysis.shape.s1.pC.lat, analysis.shape.s1.pC.lng], [analysis.shape.s1.pD.lat, analysis.shape.s1.pD.lng]]} color="#facc15" weight={6} />
+                            </>
+                          )}
+                          {analysis.shape.s2?.pA && (
+                            <>
+                              <Polyline positions={[[analysis.shape.s2.pA.lat, analysis.shape.s2.pA.lng], [analysis.shape.s2.pB.lat, analysis.shape.s2.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
+                              <Polyline positions={[[analysis.shape.s2.pC.lat, analysis.shape.s2.pC.lng], [analysis.shape.s2.pD.lat, analysis.shape.s2.pD.lng]]} color="#ea580c" weight={6} />
+                            </>
+                          )}
+                        </>
                       )}
                     </>
                   )}
@@ -727,8 +772,16 @@ const App: React.FC = () => {
                          <div className="flex items-center justify-between mb-1.5"><span className="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">EGD: {analysis.shape.method}</span></div>
                          {analysis.shape.isLShape ? (
                            <div className="flex items-center justify-around gap-2">
-                             <div className="text-center border-r border-white/10 pr-6"><span className="text-[7px] text-white/30 uppercase font-black block mb-0.5 tracking-widest">SURFACE 1</span><div className="text-4xl font-black text-yellow-400 tabular-nums">{analysis.shape.s1?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div></div>
-                             <div className="text-center pl-6"><span className="text-[7px] text-white/30 uppercase font-black block mb-0.5 tracking-widest">SURFACE 2</span><div className="text-4xl font-black text-amber-500 tabular-nums">{analysis.shape.s2?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div></div>
+                             <div className="text-center border-r border-white/10 pr-6 flex flex-col items-center">
+                               <span className="text-[7px] text-white/30 uppercase font-black block mb-0.5 tracking-widest">SURFACE 1</span>
+                               <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none">{analysis.shape.s1?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
+                               <div className="text-[8px] font-black text-yellow-500/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s1?.L.toFixed(1)} W:{analysis.shape.s1?.W.toFixed(1)}</div>
+                             </div>
+                             <div className="text-center pl-6 flex flex-col items-center">
+                               <span className="text-[7px] text-white/30 uppercase font-black block mb-0.5 tracking-widest">SURFACE 2</span>
+                               <div className="text-4xl font-black text-orange-500 tabular-nums leading-none">{analysis.shape.s2?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
+                               <div className="text-[8px] font-black text-orange-600/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s2?.L.toFixed(1)} W:{analysis.shape.s2?.W.toFixed(1)}</div>
+                             </div>
                            </div>
                          ) : (
                            <div className="text-center py-0.5 flex flex-col items-center">
@@ -752,22 +805,53 @@ const App: React.FC = () => {
                 ) : (
                   <>
                     {view === 'track' ? (
-                      <div className="flex gap-2 w-full">
-                        <button onClick={() => { 
-                          if(!trkActive) { setTrkActive(true); setTrkPoints(pos?[pos]:[]); setTrkPivots([]); } 
-                          else { 
-                            const unitSfx = units === 'Yards' ? 'yd' : 'm';
-                            const elevSfx = units === 'Yards' ? 'ft' : 'm';
-                            saveRecord({ type: 'Track', primaryValue: (trkMetrics.dist * distMult).toFixed(1) + unitSfx, secondaryValue: `Elev: ${(trkMetrics.elev * elevMult).toFixed(1)}${elevSfx}`, points: [trkPoints[0], pos].filter(Boolean) as GeoPoint[], pivots: trkPivots }); 
-                            setTrkActive(false); 
-                          } 
-                        }} className={`flex-[0.8] h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
-                        {trkActive && (
-                          <div className="flex-[1.2] flex gap-2">
-                            <button onClick={() => { if (trkPivots.length < 3 && pos) setTrkPivots([...trkPivots, pos]); }} disabled={trkPivots.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({trkPivots.length})</div></button>
-                            {trkPivots.length > 0 && <button onClick={() => setTrkPivots(prev => prev.slice(0, -1))} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
-                          </div>
-                        )}
+                      <div className="flex flex-col gap-2 w-full">
+                        <div className="flex gap-2 w-full">
+                          {!trkActive && (
+                            <div className="flex-1 flex items-center justify-between bg-slate-900 border-2 border-white/10 rounded-full px-4 py-2 h-14 shadow-xl">
+                              <div className="flex items-center gap-3 w-full justify-between">
+                                <button 
+                                  onClick={() => setHoleNum(h => Math.max(1, h - 1))}
+                                  className="w-9 h-9 bg-slate-800 rounded-full flex items-center justify-center border border-white/10 active:bg-blue-600 active:border-blue-500 transition-colors"
+                                >
+                                  <Minus size={14} />
+                                </button>
+                                <div className="flex flex-col items-center">
+                                  <span className="text-[7px] font-black uppercase tracking-widest text-white/40">HOLE</span>
+                                  <span className="text-xl font-black tabular-nums text-blue-400 leading-none">{holeNum}</span>
+                                </div>
+                                <button 
+                                  onClick={() => setHoleNum(h => Math.min(18, h + 1))}
+                                  className="w-9 h-9 bg-slate-800 rounded-full flex items-center justify-center border border-white/10 active:bg-blue-600 active:border-blue-500 transition-colors"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          <button onClick={() => { 
+                            if(!trkActive) { setTrkActive(true); setTrkPoints(pos?[pos]:[]); setTrkPivots([]); } 
+                            else { 
+                              const unitSfx = units === 'Yards' ? 'yd' : 'm';
+                              const elevSfx = units === 'Yards' ? 'ft' : 'm';
+                              saveRecord({ 
+                                type: 'Track', 
+                                primaryValue: (trkMetrics.dist * distMult).toFixed(1) + unitSfx, 
+                                secondaryValue: `Elev: ${(trkMetrics.elev * elevMult).toFixed(1)}${elevSfx}`, 
+                                points: [trkPoints[0], pos].filter(Boolean) as GeoPoint[], 
+                                pivots: trkPivots,
+                                holeNumber: holeNum
+                              }); 
+                              setTrkActive(false); 
+                            } 
+                          }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
+                          {trkActive && (
+                            <div className="flex-[1.2] flex gap-2">
+                              <button onClick={() => { if (trkPivots.length < 3 && pos) setTrkPivots([...trkPivots, pos]); }} disabled={trkPivots.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({trkPivots.length})</div></button>
+                              {trkPivots.length > 0 && <button onClick={() => setTrkPivots(prev => prev.slice(0, -1))} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div className="flex gap-2 w-full">
