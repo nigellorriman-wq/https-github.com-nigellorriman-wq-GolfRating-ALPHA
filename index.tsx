@@ -685,7 +685,7 @@ const App: React.FC = () => {
               <span className="text-[11px] uppercase tracking-widest font-semibold text-blue-500">Home</span>
             </button>
             <div className="flex gap-2">
-              {(trkActive || viewingRecord) && (
+              {((view === 'track' && trkActive) || (view === 'green' && mapActive) || viewingRecord) && (
                 <div className="pointer-events-auto bg-slate-800 border border-white/20 w-[46px] h-[46px] rounded-full flex items-center justify-center shadow-2xl">
                    <span className="text-xl font-black text-blue-400 tabular-nums">{holeNum}</span>
                 </div>
@@ -854,9 +854,33 @@ const App: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex gap-2 w-full">
-                        <button onClick={() => { if(mapActive) handleFinalizeGreen(); else { setMapPoints(pos?[pos]:[]); setMapActive(true); setMapCompleted(false); } }} className={`flex-1 h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl active:scale-95 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>{mapActive ? 'CLOSE' : 'START GREEN'}</button>
-                        {mapActive && <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all shadow-xl ${isBunker ? 'bg-orange-600 border-orange-500 text-white scale-105' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}>BUNKER (HOLD)</button>}
+                      <div className="flex flex-col gap-2 w-full">
+                        <div className="flex gap-2 w-full">
+                          {!mapActive && (
+                            <div className="flex-1 flex items-center justify-between bg-slate-900 border-2 border-white/10 rounded-full px-4 py-2 h-14 shadow-xl">
+                              <div className="flex items-center gap-3 w-full justify-between">
+                                <button 
+                                  onClick={() => setHoleNum(h => Math.max(1, h - 1))}
+                                  className="w-9 h-9 bg-slate-800 rounded-full flex items-center justify-center border border-white/10 active:bg-blue-600 active:border-blue-500 transition-colors"
+                                >
+                                  <Minus size={14} />
+                                </button>
+                                <div className="flex flex-col items-center">
+                                  <span className="text-[7px] font-black uppercase tracking-widest text-white/40">HOLE</span>
+                                  <span className="text-xl font-black tabular-nums text-emerald-400 leading-none">{holeNum}</span>
+                                </div>
+                                <button 
+                                  onClick={() => setHoleNum(h => Math.min(18, h + 1))}
+                                  className="w-9 h-9 bg-slate-800 rounded-full flex items-center justify-center border border-white/10 active:bg-blue-600 active:border-blue-500 transition-colors"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          <button onClick={() => { if(mapActive) handleFinalizeGreen(); else { setMapPoints(pos?[pos]:[]); setMapActive(true); setMapCompleted(false); } }} className={`flex-1 h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl active:scale-95 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>{mapActive ? 'CLOSE' : 'START GREEN'}</button>
+                          {mapActive && <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all shadow-xl ${isBunker ? 'bg-orange-600 border-orange-500 text-white scale-105' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}>BUNKER (HOLD)</button>}
+                        </div>
                       </div>
                     )}
                   </>
