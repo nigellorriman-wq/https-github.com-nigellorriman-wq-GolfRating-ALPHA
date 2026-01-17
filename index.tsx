@@ -971,25 +971,25 @@ const App: React.FC = () => {
                               <div className="w-full flex justify-between px-2 text-[10px] font-black">
                                  <div className="flex items-center gap-1.5">
                                     <span className="text-slate-500 uppercase">L (Curved):</span>
-                                    <span className="text-cyan-400">{(analysis.shape as any).anomalousResult.curvedLength.toFixed(1)}</span>
+                                    <span className="text-cyan-400 text-xl">{(analysis.shape as any).anomalousResult.curvedLength.toFixed(1)}</span>
                                  </div>
                                  <div className="flex items-center gap-1.5">
                                     <span className="text-slate-500 uppercase">L (Straight):</span>
-                                    <span className="text-white/60">{(analysis.shape as any).anomalousResult.straightLength.toFixed(1)}</span>
+                                    <span className="text-white/60 text-xl">{(analysis.shape as any).anomalousResult.straightLength.toFixed(1)}</span>
                                  </div>
                               </div>
-                              <div className="w-full flex justify-around px-2 mt-1 text-[11px] font-black">
+                              <div className="w-full flex justify-around px-2 mt-2 text-[11px] font-black">
                                  <div className="flex items-center gap-1">
                                     <span className="text-slate-500 uppercase text-[8px]">W1:</span>
-                                    <span style={{ color: (analysis.shape as any).anomalousResult.widths[0]?.color }}>{(analysis.shape as any).anomalousResult.widths[0]?.w.toFixed(1)}</span>
+                                    <span className="text-xl" style={{ color: (analysis.shape as any).anomalousResult.widths[0]?.color }}>{(analysis.shape as any).anomalousResult.widths[0]?.w.toFixed(1)}</span>
                                  </div>
                                  <div className="flex items-center gap-1">
                                     <span className="text-slate-500 uppercase text-[8px]">W2:</span>
-                                    <span style={{ color: (analysis.shape as any).anomalousResult.widths[1]?.color }}>{(analysis.shape as any).anomalousResult.widths[1]?.w.toFixed(1)}</span>
+                                    <span className="text-xl" style={{ color: (analysis.shape as any).anomalousResult.widths[1]?.color }}>{(analysis.shape as any).anomalousResult.widths[1]?.w.toFixed(1)}</span>
                                  </div>
                                  <div className="flex items-center gap-1">
                                     <span className="text-slate-500 uppercase text-[8px]">W3:</span>
-                                    <span style={{ color: (analysis.shape as any).anomalousResult.widths[2]?.color }}>{(analysis.shape as any).anomalousResult.widths[2]?.w.toFixed(1)}</span>
+                                    <span className="text-xl" style={{ color: (analysis.shape as any).anomalousResult.widths[2]?.color }}>{(analysis.shape as any).anomalousResult.widths[2]?.w.toFixed(1)}</span>
                                  </div>
                               </div>
                            </div>
