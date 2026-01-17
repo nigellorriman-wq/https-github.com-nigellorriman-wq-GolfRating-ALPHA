@@ -84,7 +84,7 @@ const USER_MANUAL = [
     title: "Effective Green Diameter",
     color: "text-emerald-400",
     icon: <Diameter className="text-emerald-400" />,
-    content: "Effective Green Diameter (EGD) is required when measuring a green. When a green is mapped and closed the EGD will automatically be displayed, together with the raw data and dashed lines showing the dimensions used. Oddly-shaped greens are more tricky, but by using a \"concave hull check\" it should at least recognise an L-shaped green. In these circumstances, EGD should show the raw dimension data to allow the rater to make their weighting adjustments - as per Course Rating System Manual (Jan 2024 Section 13D [two portions])."
+    content: "Effective Green Diameter (EGD) is required when measuring a green. When a green is mapped and closed the EGD will automatically be displayed, together with the raw data and dashed lines showing the dimensions used. Oddly-shaped greens are more tricky, but by using a \"concave hull check\" it should at least recognise an L-shaped green. In these circumstances, EGD should show the raw dimension data to allow the rater to make their weighting adjustments - as per Course Rating System Manual (Jan 2024 Section 13D [two portions]). In those cases when a green cannot be automatically identified by the App, it will draw a curved line right up the centre of the green with perpendicular widths at 0.25, 0.50 and 0.75 of the green depth. The raw data will be shown for manual analysis."
   },
   {
     title: "Sensor Diagnostics",
@@ -172,6 +172,17 @@ const getWidthAtAxisPoint = (midX: number, midY: number, nx: number, ny: number,
   return { minT: Math.min(...intersections), maxT: Math.max(...intersections) };
 };
 
+const isPointInPolygon = (p: {x: number, y: number}, polygon: {x: number, y: number}[]) => {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    const intersect = ((yi > p.y) !== (yj > p.y)) && (p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
+
 const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false) => {
   if (points.length < 3) return null;
   const R = 6371e3;
@@ -197,7 +208,6 @@ const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false)
   const xA = toX(pA), yA = toY(pA);
   const xB = toX(pB), yB = toY(pB);
   const dx = xB - xA, dy = yB - yA;
-  // mag is declared before use in division
   const mag = Math.sqrt(dx * dx + dy * dy);
   if (mag === 0) return null;
 
@@ -237,7 +247,6 @@ const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false)
     if (w1 && w3) {
       w1_yds = (w1.maxT - w1.minT) * 1.09361;
       w3_yds = (w3.maxT - w3.minT) * 1.09361;
-      // If the two section widths vary significantly (> 25% difference)
       if (Math.abs(w1_yds - w3_yds) / Math.max(w1_yds, w3_yds) > 0.25) {
         isInconsistent = true;
         method = "One dimension not consistent";
@@ -275,7 +284,93 @@ const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false)
   };
 };
 
-const analyzeGreenShape = (points: GeoPoint[]) => {
+/** --- NEW ANOMALOUS GREEN ANALYSIS CODE --- **/
+const performAnomalousAnalysis = (points: GeoPoint[], pA: GeoPoint, pB: GeoPoint) => {
+  const R = 6371e3;
+  const latRef = pA.lat * Math.PI / 180;
+  const toX = (p: {lat: number, lng: number}) => p.lng * Math.PI / 180 * R * Math.cos(latRef);
+  const toY = (p: {lat: number, lng: number}) => p.lat * Math.PI / 180 * R;
+  const fromXY = (x: number, y: number): GeoPoint => ({
+    lat: (y / R) * (180 / Math.PI),
+    lng: (x / (R * Math.cos(latRef))) * (180 / Math.PI),
+    alt: null, accuracy: 0, altAccuracy: 0, timestamp: 0
+  });
+
+  const xA = toX(pA), yA = toY(pA);
+  const xB = toX(pB), yB = toY(pB);
+  const dx = xB - xA, dy = yB - yA;
+  const straightDist = Math.sqrt(dx * dx + dy * dy);
+  const mag = straightDist;
+  
+  if (mag === 0) return null;
+
+  const nx = -dy / mag;
+  const ny = dx / mag;
+  const polyPoints = [...points, points[0]];
+
+  // 1. Skeleton Generation (The Curved Spine / Medial Axis)
+  const steps = 15;
+  const spinePoints: GeoPoint[] = [];
+  
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const curX = xA + dx * t;
+    const curY = yA + dy * t;
+    
+    // Find cross-section intersections at this interval
+    const res = getWidthAtAxisPoint(curX, curY, nx, ny, polyPoints, toX, toY);
+    if (res) {
+      // Find the center point between the nearest left and right perimeters (equidistant)
+      const midT = (res.minT + res.maxT) / 2;
+      spinePoints.push(fromXY(curX + nx * midT, curY + ny * midT));
+    }
+  }
+
+  // Calculate curved spine length
+  let curvedLen = 0;
+  for (let i = 0; i < spinePoints.length - 1; i++) {
+    curvedLen += calculateDistance(spinePoints[i], spinePoints[i + 1]);
+  }
+
+  // 2. Perpendicular Sampling at milestones: 1/4, 1/2, 3/4
+  const milestones = [0.25, 0.5, 0.75];
+  const milestoneColors = ["#fb923c", "#facc15", "#f472b6"];
+  const sampledWidths: { w: number, p1: GeoPoint, p2: GeoPoint, label: string, color: string }[] = [];
+  
+  milestones.forEach((m, idx) => {
+    const t = m;
+    const curX = xA + dx * t;
+    const curY = yA + dy * t;
+    const res = getWidthAtAxisPoint(curX, curY, nx, ny, polyPoints, toX, toY);
+    if (res) {
+      sampledWidths.push({
+        w: (res.maxT - res.minT) * 1.09361,
+        p1: fromXY(curX + nx * res.maxT, curY + ny * res.maxT),
+        p2: fromXY(curX + nx * res.minT, curY + ny * res.minT),
+        label: `W${idx + 1}`,
+        color: milestoneColors[idx]
+      });
+    }
+  });
+
+  const curvedLenYds = curvedLen * 1.09361;
+  const straightLenYds = mag * 1.09361;
+
+  // Manual Req Trigger Logic based on curvature ratio
+  const isSignificantlyCurved = curvedLenYds > straightLenYds * 1.15;
+
+  return {
+    method: "Anomalous Green Detected",
+    isAnomalous: true,
+    isManualReq: isSignificantlyCurved,
+    curvedLength: curvedLenYds,
+    straightLength: straightLenYds,
+    spine: spinePoints,
+    widths: sampledWidths
+  };
+};
+
+const analyzeGreenShape = (points: GeoPoint[], concavityThreshold: number = 0.82) => {
   if (points.length < 3) return null;
   const basic = getEGDAnalysis(points);
   if (!basic) return null;
@@ -284,20 +379,28 @@ const analyzeGreenShape = (points: GeoPoint[]) => {
   const hullArea = calculateArea(getConvexHull(points));
   const concavity = hullArea > 0 ? polyArea / hullArea : 1;
   
-  const isLShape = concavity < 0.82 || basic.ratio > 3.6;
+  const R = 6371e3;
+  const latRef = points[0].lat * Math.PI / 180;
+  const toX = (p: {lat: number, lng: number}) => p.lng * Math.PI / 180 * R * Math.cos(latRef);
+  const toY = (p: {lat: number, lng: number}) => p.lat * Math.PI / 180 * R;
+  const polyCoords = points.map(p => ({ x: toX(p), y: toY(p) }));
+  
+  const midX = (toX(basic.pA) + toX(basic.pB)) / 2;
+  const midY = (toY(basic.pA) + toY(basic.pB)) / 2;
+  const midpointIsOutside = !isPointInPolygon({ x: midX, y: midY }, polyCoords);
+
+  const isLShape = midpointIsOutside || concavity < concavityThreshold || basic.ratio > 3.6;
 
   if (isLShape) {
     let elbowIdx = 0;
     let maxElbowDist = -1;
-    const R = 6371e3;
-    const latRef = basic.pA.lat * Math.PI / 180;
-    const xA = basic.pA.lng * Math.PI / 180 * R * Math.cos(latRef), yA = basic.pA.lat * Math.PI / 180 * R;
-    const xB = basic.pB.lng * Math.PI / 180 * R * Math.cos(latRef), yB = basic.pB.lat * Math.PI / 180 * R;
+    const xA = toX(basic.pA), yA = toY(basic.pA);
+    const xB = toX(basic.pB), yB = toY(basic.pB);
     const dx = xB - xA, dy = yB - yA;
     const mag = Math.sqrt(dx * dx + dy * dy);
 
     points.forEach((p, idx) => {
-      const px = p.lng * Math.PI / 180 * R * Math.cos(latRef), py = p.lat * Math.PI / 180 * R;
+      const px = toX(p), py = toY(p);
       const dist = Math.abs((xB - xA) * (yA - py) - (xA - px) * (yB - yA)) / mag;
       if (dist > maxElbowDist) {
         maxElbowDist = dist;
@@ -305,17 +408,39 @@ const analyzeGreenShape = (points: GeoPoint[]) => {
       }
     });
 
-    // When "Two portions" is applied, force both sub-portions to use (L+W)/2
+    const s1 = getEGDAnalysis(points.slice(0, elbowIdx + 1), true);
+    const s2 = getEGDAnalysis(points.slice(elbowIdx), true);
+
+    let hasAnomaly = false;
+    if (s1 && s1.pA && s1.pB) {
+      const s1MidX = (toX(s1.pA) + toX(s1.pB)) / 2;
+      const s1MidY = (toY(s1.pA) + toY(s1.pB)) / 2;
+      if (!isPointInPolygon({ x: s1MidX, y: s1MidY }, polyCoords)) hasAnomaly = true;
+    }
+    if (!hasAnomaly && s2 && s2.pA && s2.pB) {
+      const s2MidX = (toX(s2.pA) + toX(s2.pB)) / 2;
+      const s2MidY = (toY(s2.pA) + toY(s2.pB)) / 2;
+      if (!isPointInPolygon({ x: s2MidX, y: s2MidY }, polyCoords)) hasAnomaly = true;
+    }
+
+    // --- TRIGGER ANOMALOUS GREEN ANALYSIS IF ANOMALY DETECTED ---
+    let anomalousResult = null;
+    if (hasAnomaly) {
+      anomalousResult = performAnomalousAnalysis(points, basic.pA, basic.pB);
+    }
+
     return { 
       ...basic, 
       isLShape: true, 
-      method: "Two portions",
-      s1: getEGDAnalysis(points.slice(0, elbowIdx + 1), true), 
-      s2: getEGDAnalysis(points.slice(elbowIdx), true) 
+      method: anomalousResult ? anomalousResult.method : "Two portions",
+      hasAnomaly,
+      anomalousResult,
+      s1, 
+      s2 
     };
   }
 
-  return { ...basic, isLShape: false, s1: null, s2: null };
+  return { ...basic, isLShape: false, hasAnomaly: false, s1: null, s2: null };
 };
 
 const MapController: React.FC<{ 
@@ -352,9 +477,6 @@ const MapController: React.FC<{
       const bounds = L.latLngBounds(mapPoints.map(p => [p.lat, p.lng]));
       map.fitBounds(bounds, { padding: [40, 40], paddingBottomRight: [40, 240], animate: true });
     } else if (pos) {
-      // Automatic zoom behavior updated:
-      // 1. Initial lock: If we haven't locked yet, snap to position and set zoom level immediately.
-      // 2. Continuous tracking: Only follows if recording (active) or if we haven't locked at all yet.
       if (!hasInitialLock.current) {
         map.setView([pos.lat, pos.lng], 19, { animate: true });
         hasInitialLock.current = true;
@@ -432,6 +554,8 @@ const App: React.FC = () => {
   const [mapPoints, setMapPoints] = useState<GeoPoint[]>([]);
   const [isBunker, setIsBunker] = useState(false);
 
+  const CONCAVITY_FIXED = 0.82;
+
   useEffect(() => {
     const saved = localStorage.getItem('scottish_golf_rating_toolkit_final');
     if (saved) {
@@ -473,15 +597,27 @@ const App: React.FC = () => {
     if (mapCompleted || (viewingRecord && viewingRecord.type === 'Green')) {
       perimeter += calculateDistance(pts[pts.length-1], pts[0]);
     }
-    const shape = (pts.length >= 3 && (mapCompleted || viewingRecord)) ? analyzeGreenShape(pts) : null;
+    const shape = (pts.length >= 3 && (mapCompleted || viewingRecord)) ? analyzeGreenShape(pts, CONCAVITY_FIXED) : null;
     return { area: calculateArea(pts), perimeter, bunkerPct: perimeter > 0 ? Math.round((bunkerLength / perimeter) * 100) : 0, shape };
   }, [mapPoints, mapCompleted, viewingRecord]);
 
   const handleFinalizeGreen = useCallback(() => {
     if (mapPoints.length < 3) return;
-    const shape = analyzeGreenShape(mapPoints);
+    const shape = analyzeGreenShape(mapPoints, CONCAVITY_FIXED);
     const areaVal = Math.round(calculateArea(mapPoints) * (units === 'Yards' ? 1.196 : 1));
-    const egdStr = (shape && shape.isLShape) ? `${shape.s1?.egd} / ${shape.s2?.egd} yd` : `${shape?.egd} yd`;
+    
+    let egdStr = "--";
+    const s = shape as any;
+    if (s) {
+      if (s.anomalousResult && s.anomalousResult.isManualReq) {
+        egdStr = "MANUAL REQ";
+      } else if (s.isLShape) {
+        egdStr = `${s.s1?.egd} / ${s.s2?.egd} yd`;
+      } else {
+        egdStr = `${s.egd} yd`;
+      }
+    }
+
     saveRecord({ 
       type: 'Green', 
       primaryValue: `${areaVal}${units === 'Yards' ? 'yd²' : 'm²'}`, 
@@ -579,7 +715,6 @@ const App: React.FC = () => {
         const coordsStr = coordsNode?.textContent || "";
         const descStr = descNode?.textContent || "";
         
-        // Extract hole number from description or name
         let extractedHole = 0;
         const holeMatch = descStr.match(/Hole:(\d+)/);
         if (holeMatch) {
@@ -608,9 +743,14 @@ const App: React.FC = () => {
         };
         if (isActuallyGreen) {
           const area = calculateArea(points);
-          const egdObj = analyzeGreenShape(points);
+          const egdObj = analyzeGreenShape(points, CONCAVITY_FIXED) as any;
           record.primaryValue = `${Math.round(area * (units === 'Yards' ? 1.196 : 1))}${units === 'Yards' ? 'yd²' : 'm²'}`;
-          record.egdValue = egdObj?.isLShape ? `${egdObj.s1?.egd} / ${egdObj.s2?.egd} yd` : (egdObj ? `${egdObj.egd} yd` : '--');
+          
+          if (egdObj && egdObj.anomalousResult && egdObj.anomalousResult.isManualReq) {
+            record.egdValue = "MANUAL REQ";
+          } else {
+            record.egdValue = egdObj?.isLShape ? `${egdObj.s1?.egd} / ${egdObj.s2?.egd} yd` : (egdObj ? `${egdObj.egd} yd` : '--');
+          }
           record.secondaryValue = `Bunker: 0%`;
         } else {
           let totalDist = 0;
@@ -746,31 +886,42 @@ const App: React.FC = () => {
                   {(viewingRecord?.points || mapPoints).map((p, i, arr) => i > 0 && <Polyline key={i} positions={[[arr[i-1].lat, arr[i-1].lng], [p.lat, p.lng]]} color={p.type === 'bunker' ? '#facc15' : '#10b981'} weight={p.type === 'bunker' ? 7 : 4} />)}
                   {(viewingRecord || mapCompleted) && analysis?.shape && (
                     <>
-                      {!analysis.shape.isLShape && analysis.shape.pA && (
+                      {(analysis.shape as any).anomalousResult ? (
                         <>
-                          <Polyline positions={[[analysis.shape.pA.lat, analysis.shape.pA.lng], [analysis.shape.pB.lat, analysis.shape.pB.lng]]} color="#22d3ee" weight={5} />
-                          {analysis.shape.isInconsistent ? (
-                            <>
-                              <Polyline positions={[[analysis.shape.pC1.lat, analysis.shape.pC1.lng], [analysis.shape.pD1.lat, analysis.shape.pD1.lng]]} color="#facc15" weight={5} />
-                              <Polyline positions={[[analysis.shape.pC3.lat, analysis.shape.pC3.lng], [analysis.shape.pD3.lat, analysis.shape.pD3.lng]]} color="#facc15" weight={5} />
-                            </>
-                          ) : (
-                            <Polyline positions={[[analysis.shape.pC.lat, analysis.shape.pC.lng], [analysis.shape.pD.lat, analysis.shape.pD.lng]]} color="#facc15" weight={5} />
-                          )}
+                          <Polyline positions={(analysis.shape as any).anomalousResult.spine.map((p: any) => [p.lat, p.lng])} color="#22d3ee" weight={5} />
+                          {(analysis.shape as any).anomalousResult.widths.map((w: any, idx: number) => (
+                            <Polyline key={`sampling-${idx}`} positions={[[w.p1.lat, w.p1.lng], [w.p2.lat, w.p2.lng]]} color={w.color} weight={4} dashArray="5, 10" />
+                          ))}
                         </>
-                      )}
-                      {analysis.shape.isLShape && (
+                      ) : (
                         <>
-                          {analysis.shape.s1?.pA && (
+                          {!analysis.shape.isLShape && analysis.shape.pA && (
                             <>
-                              <Polyline positions={[[analysis.shape.s1.pA.lat, analysis.shape.s1.pA.lng], [analysis.shape.s1.pB.lat, analysis.shape.s1.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
-                              <Polyline positions={[[analysis.shape.s1.pC.lat, analysis.shape.s1.pC.lng], [analysis.shape.s1.pD.lat, analysis.shape.s1.pD.lng]]} color="#facc15" weight={6} />
+                              <Polyline positions={[[analysis.shape.pA.lat, analysis.shape.pA.lng], [analysis.shape.pB.lat, analysis.shape.pB.lng]]} color="#22d3ee" weight={5} />
+                              {analysis.shape.isInconsistent ? (
+                                <>
+                                  <Polyline positions={[[analysis.shape.pC1.lat, analysis.shape.pC1.lng], [analysis.shape.pD1.lat, analysis.shape.pD1.lng]]} color="#facc15" weight={5} />
+                                  <Polyline positions={[[analysis.shape.pC3.lat, analysis.shape.pC3.lng], [analysis.shape.pD3.lat, analysis.shape.pD3.lng]]} color="#facc15" weight={5} />
+                                </>
+                              ) : (
+                                <Polyline positions={[[analysis.shape.pC.lat, analysis.shape.pC.lng], [analysis.shape.pD.lat, analysis.shape.pD.lng]]} color="#facc15" weight={5} />
+                              )}
                             </>
                           )}
-                          {analysis.shape.s2?.pA && (
+                          {analysis.shape.isLShape && (
                             <>
-                              <Polyline positions={[[analysis.shape.s2.pA.lat, analysis.shape.s2.pA.lng], [analysis.shape.s2.pB.lat, analysis.shape.s2.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
-                              <Polyline positions={[[analysis.shape.s2.pC.lat, analysis.shape.s2.pC.lng], [analysis.shape.s2.pD.lat, analysis.shape.s2.pD.lng]]} color="#ea580c" weight={6} />
+                              {analysis.shape.s1?.pA && (
+                                <>
+                                  <Polyline positions={[[analysis.shape.s1.pA.lat, analysis.shape.s1.pA.lng], [analysis.shape.s1.pB.lat, analysis.shape.s1.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
+                                  <Polyline positions={[[analysis.shape.s1.pC.lat, analysis.shape.s1.pC.lng], [analysis.shape.s1.pD.lat, analysis.shape.s1.pD.lng]]} color="#facc15" weight={6} />
+                                </>
+                              )}
+                              {analysis.shape.s2?.pA && (
+                                <>
+                                  <Polyline positions={[[analysis.shape.s2.pA.lat, analysis.shape.s2.pA.lng], [analysis.shape.s2.pB.lat, analysis.shape.s2.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
+                                  <Polyline positions={[[analysis.shape.s2.pC.lat, analysis.shape.s2.pC.lng], [analysis.shape.s2.pD.lat, analysis.shape.s2.pD.lng]]} color="#ea580c" weight={6} />
+                                </>
+                              )}
                             </>
                           )}
                         </>
@@ -805,16 +956,50 @@ const App: React.FC = () => {
                     </div>
                     {analysis?.shape && (
                       <div className="bg-white/[0.04] rounded-[2rem] px-5 py-2 border border-white/10 shadow-inner">
-                         <div className="flex items-center justify-between mb-1.5"><span className="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">EGD: {analysis.shape.method}</span></div>
-                         {analysis.shape.isLShape ? (
+                         <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">EGD: {analysis.shape.method}</span>
+                            {analysis.shape.isLShape && analysis.shape.hasAnomaly && !(analysis.shape as any).anomalousResult && (
+                              <div className="flex items-center gap-1.5 animate-pulse">
+                                <AlertCircle size={10} className="text-red-500" />
+                                <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">Anomaly</span>
+                              </div>
+                            )}
+                         </div>
+
+                         {(analysis.shape as any).anomalousResult ? (
+                           <div className="flex flex-col items-center py-1">
+                              <div className="w-full flex justify-between px-2 text-[10px] font-black">
+                                 <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-500 uppercase">L (Curved):</span>
+                                    <span className="text-cyan-400">{(analysis.shape as any).anomalousResult.curvedLength.toFixed(1)}</span>
+                                 </div>
+                                 <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-500 uppercase">L (Straight):</span>
+                                    <span className="text-white/60">{(analysis.shape as any).anomalousResult.straightLength.toFixed(1)}</span>
+                                 </div>
+                              </div>
+                              <div className="w-full flex justify-around px-2 mt-1 text-[11px] font-black">
+                                 <div className="flex items-center gap-1">
+                                    <span className="text-slate-500 uppercase text-[8px]">W1:</span>
+                                    <span style={{ color: (analysis.shape as any).anomalousResult.widths[0]?.color }}>{(analysis.shape as any).anomalousResult.widths[0]?.w.toFixed(1)}</span>
+                                 </div>
+                                 <div className="flex items-center gap-1">
+                                    <span className="text-slate-500 uppercase text-[8px]">W2:</span>
+                                    <span style={{ color: (analysis.shape as any).anomalousResult.widths[1]?.color }}>{(analysis.shape as any).anomalousResult.widths[1]?.w.toFixed(1)}</span>
+                                 </div>
+                                 <div className="flex items-center gap-1">
+                                    <span className="text-slate-500 uppercase text-[8px]">W3:</span>
+                                    <span style={{ color: (analysis.shape as any).anomalousResult.widths[2]?.color }}>{(analysis.shape as any).anomalousResult.widths[2]?.w.toFixed(1)}</span>
+                                 </div>
+                              </div>
+                           </div>
+                         ) : analysis.shape.isLShape ? (
                            <div className="flex items-center justify-around gap-2">
                              <div className="text-center border-r border-white/10 pr-6 flex flex-col items-center">
-                               <span className="text-[7px] text-white/30 uppercase font-black block mb-0.5 tracking-widest">SURFACE 1</span>
                                <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none">{analysis.shape.s1?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
                                <div className="text-[8px] font-black text-yellow-500/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s1?.L.toFixed(1)} W:{analysis.shape.s1?.W.toFixed(1)}</div>
                              </div>
                              <div className="text-center pl-6 flex flex-col items-center">
-                               <span className="text-[7px] text-white/30 uppercase font-black block mb-0.5 tracking-widest">SURFACE 2</span>
                                <div className="text-4xl font-black text-orange-500 tabular-nums leading-none">{analysis.shape.s2?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
                                <div className="text-[8px] font-black text-orange-600/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s2?.L.toFixed(1)} W:{analysis.shape.s2?.W.toFixed(1)}</div>
                              </div>
