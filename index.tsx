@@ -63,8 +63,20 @@ const USER_MANUAL = [
     title: "Introduction",
     color: "text-white",
     icon: <BookOpen className="text-white" />,
-    content: "Scottish Golf Course Rating Toolkit is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App is still work, though you may lose the background mapping."
+    content: "Scottish Golf Course Rating Toolkit is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch. A trick is to open the app where you have Internet, open the 'Distance Tracker' section and zoom out so you see the whole of the course you are working on. This should cache the images or maps locally, so you can still see them when Internet is lost. But if you lose connection the App will still work, though you may not see the background mapping."
   },
+   
+  {
+    title: "Location services",
+    color: "text-rose-500",
+    icon: <MapPin className="text-rose-500" />,
+    content: (
+      <>
+        If your location isn't showing when you're trying to track a distance or map a green, try the following help sources 1) <a href="https://support.google.com/nexus/topic/6143651" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">Android devices</a>  2) <a href="https://support.apple.com/en-gb/102647" target="_blank" rel="noopener noreferrer" className="text-emerald-500 underline">iOS (Apple) devices</a>
+      </>
+    )
+  },
+  
   {
     title: "Distance Tracker",
     color: "text-blue-400",
