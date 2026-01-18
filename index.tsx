@@ -692,7 +692,6 @@ const App: React.FC = () => {
 
   const [trkActive, setTrkActive] = useState(false);
   const [trkPoints, setTrkPoints] = useState<GeoPoint[]>([]);
-  // Fix: Renamed setter to setTrkPivotsArray for consistency with state variable trkPivotsArray
   const [trkPivotsArray, setTrkPivotsArray] = useState<GeoPoint[]>([]);
   const [holeNum, setHoleNum] = useState(1);
   
@@ -721,7 +720,9 @@ const App: React.FC = () => {
         altAccuracy: p.coords.altitudeAccuracy, 
         timestamp: Date.now() 
       }),
-      null, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+      (err) => {
+        console.error("Location error:", err);
+      }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
     return () => navigator.geolocation.clearWatch(watch);
   }, []);
