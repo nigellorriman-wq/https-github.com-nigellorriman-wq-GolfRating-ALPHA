@@ -210,6 +210,18 @@ const getAccuracyColor = (accuracy: number): string => {
   return 'rgba(239, 68, 68, 0.4)'; // Red
 };
 
+const getAccuracyTextColor = (accuracy: number): string => {
+  if (accuracy < 2) return 'text-emerald-500';
+  if (accuracy <= 5) return 'text-amber-500';
+  return 'text-rose-500';
+};
+
+const getVerticalAccuracyTextColor = (accuracy: number | null, alt: number | null): string => {
+  if (accuracy) return 'text-blue-500'; // Barometric/High Precision
+  if (alt) return 'text-emerald-500'; // Standard 3D
+  return 'text-amber-500'; // Search
+};
+
 const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false) => {
   if (points.length < 3) return null;
   const R = 6371e3;
@@ -1077,28 +1089,6 @@ const App: React.FC = () => {
               <button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3.5 rounded-full text-blue-400 shadow-2xl active:scale-90"><Layers size={20} /></button>
             </div>
           </div>
-
-          <div className="absolute top-20 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
-            {pos && (
-              <div className="bg-slate-900/90 border border-white/10 p-3 rounded-[1.5rem] shadow-2xl backdrop-blur-md flex flex-col gap-2 pointer-events-auto">
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full shadow-lg ${pos.altAccuracy ? 'bg-blue-500 animate-pulse' : (pos.alt ? 'bg-emerald-500' : 'bg-amber-500')}`} />
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Vertical</span>
-                    <span className="text-[10px] font-black text-white tabular-nums">±{pos.altAccuracy?.toFixed(1) || 'Searching...'}m</span>
-                  </div>
-                </div>
-                <div className="h-px bg-white/5 w-full" />
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full shadow-lg ${pos.accuracy < 3 ? 'bg-emerald-500' : (pos.accuracy < 10 ? 'bg-amber-500' : 'bg-red-500')}`} />
-                  <div className="flex flex-col">
-                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Horizontal</span>
-                    <span className="text-[10px] font-black text-white tabular-nums">±{pos.accuracy?.toFixed(1)}m</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
           
           <main className="flex-1">
             <MapContainer center={[0, 0]} zoom={2} className="h-full w-full" zoomControl={false} attributionControl={false} style={{ backgroundColor: '#020617' }}>
@@ -1181,16 +1171,28 @@ const App: React.FC = () => {
             <div className="flex flex-col gap-2 w-full max-w-[340px]">
               <div className="pointer-events-auto bg-slate-900/95 border border-white/20 rounded-[2.8rem] px-6 py-3 w-full shadow-2xl backdrop-blur-md">
                 {view === 'track' ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center flex flex-col items-center">
-                      <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">{viewingRecord ? 'LOG DATA' : 'DISTANCE'}</span>
-                      <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">{(trkMetrics.dist * distMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div>
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-center flex flex-col items-center">
+                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">{viewingRecord ? 'LOG DATA' : 'DISTANCE'}</span>
+                        <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">{(trkMetrics.dist * distMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div>
+                      </div>
+                      <div className="text-center border-l border-white/10 flex flex-col items-center">
+                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
+                        <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter">{(trkMetrics.elev * elevMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span></div>
+                      </div>
                     </div>
-                    <div className="text-center border-l border-white/10 flex flex-col items-center">
-                      <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
-                      <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter">{(trkMetrics.elev * elevMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span></div>
-                    </div>
-                  </div>
+                    {pos && !viewingRecord && (
+                      <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-4">
+                        <div className="text-center flex flex-col">
+                          <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                        </div>
+                        <div className="text-center border-l border-white/10 flex flex-col">
+                          <span className={`text-[11px] font-black tabular-nums ${getVerticalAccuracyTextColor(pos.altAccuracy, pos.alt)}`}>±{pos.altAccuracy?.toFixed(1) || 'Searching...'}m</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
                     <div className="grid grid-cols-3 gap-2 mb-2">
@@ -1259,6 +1261,11 @@ const App: React.FC = () => {
                              </div>
                            </div>
                          )}
+                      </div>
+                    )}
+                    {pos && !viewingRecord && (
+                      <div className="mt-2 pt-2 border-t border-white/10 flex flex-col items-center">
+                        <span className={`text-[10px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
                       </div>
                     )}
                   </>
