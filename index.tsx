@@ -553,6 +553,7 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [result, setResult] = useState<number | null>(null);
   const [slopeCat, setSlopeCat] = useState<string | null>(null);
   const [slopeSub, setSlopeSub] = useState<string | null>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
 
   const calculate = () => {
     const sDownTotal = sDownFt + sDownIn / 12;
@@ -575,6 +576,11 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         setSlopeSub("HC/SS");
       }
     }
+    
+    // Auto-scroll to result
+    setTimeout(() => {
+      resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 100);
   };
 
   const adjustValue = (val: number, set: (v: number) => void, inc: number, min: number, max: number) => {
@@ -595,10 +601,11 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   return (
     <div className="fixed inset-0 z-[2000] bg-[#020617] flex flex-col p-4 overflow-y-auto no-scrollbar">
       <div className="flex justify-between items-center mb-4 mt-2">
-        <h2 className="text-3xl font-black text-blue-500 uppercase tracking-tighter">Stimp Slopes</h2>
-        <button onClick={onClose} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-white active:scale-90 transition-all border border-white/10 shadow-lg">
-          <X size={24} />
+        <button onClick={onClose} className="bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
+          <ChevronLeft size={18} className="text-emerald-400" />
+          <span className="text-[11px] uppercase tracking-widest font-semibold text-blue-500">Home</span>
         </button>
+        <h1 className="text-3xl tracking-tighter font-semibold text-blue-500">Sloping Greens</h1>
       </div>
 
       <div className="flex flex-col items-center mb-6">
@@ -612,18 +619,26 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col items-center gap-2">
               <span className="text-[9px] font-black text-slate-500 uppercase">Feet</span>
-              <div className="flex flex-col items-center bg-slate-800/80 rounded-[1.2rem] p-1 border border-white/5 w-full">
-                <button onClick={() => adjustValue(sDownFt, setSDownFt, 1, 0, 50)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronUp size={20} /></button>
-                <span className="text-2xl font-black tabular-nums py-0.5">{sDownFt}</span>
-                <button onClick={() => adjustValue(sDownFt, setSDownFt, -1, 0, 50)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronDown size={20} /></button>
+              <div className="flex items-stretch bg-slate-800/80 rounded-[1.2rem] overflow-hidden border border-white/5 w-full h-[120px]">
+                <div className="flex-1 flex items-center justify-center bg-slate-900/40">
+                  <span className="text-3xl font-black tabular-nums">{sDownFt}</span>
+                </div>
+                <div className="w-16 flex flex-col border-l border-white/5">
+                  <button onClick={() => adjustValue(sDownFt, setSDownFt, 1, 0, 50)} className="flex-1 flex items-center justify-center text-blue-400 active:bg-blue-500/10 transition-colors"><ChevronUp size={28} /></button>
+                  <button onClick={() => adjustValue(sDownFt, setSDownFt, -1, 0, 50)} className="flex-1 flex items-center justify-center text-blue-400 active:bg-blue-500/10 transition-colors"><ChevronDown size={28} /></button>
+                </div>
               </div>
             </div>
             <div className="flex flex-col items-center gap-2">
               <span className="text-[9px] font-black text-slate-500 uppercase">Inches</span>
-              <div className="flex flex-col items-center bg-slate-800/80 rounded-[1.2rem] p-1 border border-white/5 w-full">
-                <button onClick={() => adjustValue(sDownIn, setSDownIn, 3, 0, 9)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronUp size={20} /></button>
-                <span className="text-2xl font-black tabular-nums py-0.5">{sDownIn}</span>
-                <button onClick={() => adjustValue(sDownIn, setSDownIn, -3, 0, 9)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronDown size={20} /></button>
+              <div className="flex items-stretch bg-slate-800/80 rounded-[1.2rem] overflow-hidden border border-white/5 w-full h-[120px]">
+                <div className="flex-1 flex items-center justify-center bg-slate-900/40">
+                  <span className="text-3xl font-black tabular-nums">{sDownIn}</span>
+                </div>
+                <div className="w-16 flex flex-col border-l border-white/5">
+                  <button onClick={() => adjustValue(sDownIn, setSDownIn, 3, 0, 9)} className="flex-1 flex items-center justify-center text-blue-400 active:bg-blue-500/10 transition-colors"><ChevronUp size={28} /></button>
+                  <button onClick={() => adjustValue(sDownIn, setSDownIn, -3, 0, 9)} className="flex-1 flex items-center justify-center text-blue-400 active:bg-blue-500/10 transition-colors"><ChevronDown size={28} /></button>
+                </div>
               </div>
             </div>
           </div>
@@ -635,18 +650,26 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col items-center gap-2">
               <span className="text-[9px] font-black text-slate-500 uppercase">Feet</span>
-              <div className="flex flex-col items-center bg-slate-800/80 rounded-[1.2rem] p-1 border border-white/5 w-full">
-                <button onClick={() => adjustValue(sUpFt, setSUpFt, 1, 0, 50)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronUp size={20} /></button>
-                <span className="text-2xl font-black tabular-nums py-0.5">{sUpFt}</span>
-                <button onClick={() => adjustValue(sUpFt, setSUpFt, -1, 0, 50)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronDown size={20} /></button>
+              <div className="flex items-stretch bg-slate-800/80 rounded-[1.2rem] overflow-hidden border border-white/5 w-full h-[120px]">
+                <div className="flex-1 flex items-center justify-center bg-slate-900/40">
+                  <span className="text-3xl font-black tabular-nums">{sUpFt}</span>
+                </div>
+                <div className="w-16 flex flex-col border-l border-white/5">
+                  <button onClick={() => adjustValue(sUpFt, setSUpFt, 1, 0, 50)} className="flex-1 flex items-center justify-center text-blue-400 active:bg-blue-500/10 transition-colors"><ChevronUp size={28} /></button>
+                  <button onClick={() => adjustValue(sUpFt, setSUpFt, -1, 0, 50)} className="flex-1 flex items-center justify-center text-blue-400 active:bg-blue-500/10 transition-colors"><ChevronDown size={28} /></button>
+                </div>
               </div>
             </div>
             <div className="flex flex-col items-center gap-2">
               <span className="text-[9px] font-black text-slate-500 uppercase">Inches</span>
-              <div className="flex flex-col items-center bg-slate-800/80 rounded-[1.2rem] p-1 border border-white/5 w-full">
-                <button onClick={() => adjustValue(sUpIn, setSUpIn, 3, 0, 9)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronUp size={20} /></button>
-                <span className="text-2xl font-black tabular-nums py-0.5">{sUpIn}</span>
-                <button onClick={() => adjustValue(sUpIn, setSUpIn, -3, 0, 9)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronDown size={20} /></button>
+              <div className="flex items-stretch bg-slate-800/80 rounded-[1.2rem] overflow-hidden border border-white/5 w-full h-[120px]">
+                <div className="flex-1 flex items-center justify-center bg-slate-900/40">
+                  <span className="text-3xl font-black tabular-nums">{sUpIn}</span>
+                </div>
+                <div className="w-16 flex flex-col border-l border-white/5">
+                  <button onClick={() => adjustValue(sUpIn, setSUpIn, 3, 0, 9)} className="flex-1 flex items-center justify-center text-blue-400 active:bg-blue-500/10 transition-colors"><ChevronUp size={28} /></button>
+                  <button onClick={() => adjustValue(sUpIn, setSUpIn, -3, 0, 9)} className="flex-1 flex items-center justify-center text-blue-400 active:bg-blue-500/10 transition-colors"><ChevronDown size={28} /></button>
+                </div>
               </div>
             </div>
           </div>
@@ -663,16 +686,21 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </button>
 
           {result !== null && (
-            <div className="bg-white/[0.04] border border-blue-500/30 rounded-[1.8rem] p-6 flex flex-col items-start animate-in zoom-in-95 duration-300">
+            <div ref={resultRef} className="bg-white/[0.04] border border-blue-500/30 rounded-[1.8rem] p-6 flex flex-col items-start animate-in zoom-in-95 duration-300">
               <span className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] mb-2 w-full text-left">Corrected Green Speed</span>
               <div className="text-5xl font-black text-white tabular-nums leading-none mb-1 flex items-center justify-between w-full">
                 <span className="text-left">{formatResult(result)}</span>
                 {slopeCat && (
                   <div className="flex flex-col items-center">
                     <span className="text-2xl text-yellow-400 bg-yellow-400/10 px-3 py-1 rounded-xl border border-yellow-400/20 tabular-nums">({slopeCat})</span>
-                    {slopeSub && <span className="text-[10px] font-black text-yellow-500 uppercase mt-1 tracking-widest">{slopeSub}</span>}
+                    {slopeSub && <span className="text-[14px] font-black text-yellow-500 uppercase mt-1 tracking-widest">{slopeSub}</span>}
                   </div>
                 )}
+              </div>
+              <div className="mt-6 pt-6 border-t border-white/10 w-full flex justify-center">
+                <p className="text-[14px] font-light text-white leading-relaxed tracking-tight text-center">
+                  (2x<span className="text-orange-400 font-semibold">S(down)</span> x <span className="text-emerald-400 font-semibold">S(up)</span>)÷(<span className="text-orange-400 font-semibold">S(down)</span>+<span className="text-emerald-400 font-semibold">S(up)</span>)
+                </p>
               </div>
             </div>
           )}
