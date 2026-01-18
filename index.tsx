@@ -24,11 +24,14 @@ import {
   Diameter,
   Plus,
   Minus,
-  CaseSensitive
+  CaseSensitive,
+  Gauge,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 /** --- TYPES --- **/
-type AppView = 'landing' | 'track' | 'green' | 'manual';
+type AppView = 'landing' | 'track' | 'green' | 'manual' | 'stimp';
 type UnitSystem = 'Yards' | 'Metres';
 type FontSize = 'small' | 'medium' | 'large';
 
@@ -60,7 +63,7 @@ const USER_MANUAL = [
     title: "Introduction",
     color: "text-white",
     icon: <BookOpen className="text-white" />,
-    content: "Scottish Golf Course Rating Toolkit is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App will still work, though you may lose the background mapping."
+    content: "Scottish Golf Course Rating Toolkit is designed to provide an alternative to roadwheels and barometers when rating a course. Ensure 'High Accuracy' location is enabled on your device. For best results, keep the app active and in-hand while walking. The App is web-based, so an internet connection is required to launch, but if you lose connection the App is still work, though you may lose the background mapping."
   },
   {
     title: "Distance Tracker",
@@ -85,6 +88,12 @@ const USER_MANUAL = [
     color: "text-emerald-400",
     icon: <Diameter className="text-emerald-400" />,
     content: "Effective Green Diameter (EGD) is required when measuring a green. When a green is mapped and closed the EGD will automatically be displayed, together with the raw data and dashed lines showing the dimensions used. Oddly-shaped greens are more tricky, but by using a \"concave hull check\" it should at least recognise an L-shaped green. In these circumstances, EGD should show the raw dimension data to allow the rater to make their weighting adjustments - as per Course Rating System Manual (Jan 2024 Section 13D [two portions]). In those cases when a green cannot be automatically identified by the App, it will draw a curved line right up the centre of the green with perpendicular widths at 0.25, 0.50 and 0.75 of the green depth. The raw data will be shown for manual analysis."
+  },
+   {
+    title: "Stimping sloped greens",
+    color: "text-blue-400",
+    icon: <Gauge className="text-blue-400" />,
+    content: "While the best procedure is to find a level area on the green on which to stimp, when it is not possible to find a flat area to measure, refer to 'Course Rating Manual 9.Green Surface'. Find the most uniform area. Roll balls down and then up. Enter the averaged values into the App and it will calculate the corrected speed and contour category based on those values. Refer to the 'Green Surface Rating Table' to determine the rating."
   },
   {
     title: "Sensor Diagnostics",
@@ -536,6 +545,143 @@ const UserManual: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 };
 
+const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [sDownFt, setSDownFt] = useState(0);
+  const [sDownIn, setSDownIn] = useState(0);
+  const [sUpFt, setSUpFt] = useState(0);
+  const [sUpIn, setSUpIn] = useState(0);
+  const [result, setResult] = useState<number | null>(null);
+  const [slopeCat, setSlopeCat] = useState<string | null>(null);
+  const [slopeSub, setSlopeSub] = useState<string | null>(null);
+
+  const calculate = () => {
+    const sDownTotal = sDownFt + sDownIn / 12;
+    const sUpTotal = sUpFt + sUpIn / 12;
+    if (sDownTotal + sUpTotal === 0) return;
+    const corrected = (2 * sDownTotal * sUpTotal) / (sDownTotal + sUpTotal);
+    setResult(corrected);
+
+    // Corrected ratio calculation logic
+    if (sUpTotal > 0) {
+      const ratioValue = sDownTotal / sUpTotal;
+      if (ratioValue < 2) {
+        setSlopeCat("<2'");
+        setSlopeSub("RF/GS");
+      } else if (ratioValue <= 3) {
+        setSlopeCat("2'-3'");
+        setSlopeSub("MC/MS");
+      } else {
+        setSlopeCat(">3'");
+        setSlopeSub("HC/SS");
+      }
+    }
+  };
+
+  const adjustValue = (val: number, set: (v: number) => void, inc: number, min: number, max: number) => {
+    const next = val + inc;
+    if (next >= min && next <= max) set(next);
+  };
+
+  const formatResult = (val: number) => {
+    const ft = Math.floor(val);
+    const inches = Math.round((val - ft) * 12);
+    // Handle carry over if inches rounds to 12
+    if (inches === 12) {
+      return `${ft + 1}' 0"`;
+    }
+    return `${ft}' ${inches}"`;
+  };
+
+  return (
+    <div className="fixed inset-0 z-[2000] bg-[#020617] flex flex-col p-4 overflow-y-auto no-scrollbar">
+      <div className="flex justify-between items-center mb-4 mt-2">
+        <h2 className="text-3xl font-black text-blue-500 uppercase tracking-tighter">Stimp Slopes</h2>
+        <button onClick={onClose} className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center text-white active:scale-90 transition-all border border-white/10 shadow-lg">
+          <X size={24} />
+        </button>
+      </div>
+
+      <div className="flex flex-col items-center mb-6">
+        <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest text-center">Speed correction for sloping greens</p>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        {/* S(down) Input Area */}
+        <div className="bg-slate-900/50 border border-white/5 rounded-[1.8rem] p-4">
+          <h3 className="text-lg font-black text-orange-400 uppercase tracking-tight mb-4">S(down) Distance</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-[9px] font-black text-slate-500 uppercase">Feet</span>
+              <div className="flex flex-col items-center bg-slate-800/80 rounded-[1.2rem] p-1 border border-white/5 w-full">
+                <button onClick={() => adjustValue(sDownFt, setSDownFt, 1, 0, 50)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronUp size={20} /></button>
+                <span className="text-2xl font-black tabular-nums py-0.5">{sDownFt}</span>
+                <button onClick={() => adjustValue(sDownFt, setSDownFt, -1, 0, 50)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronDown size={20} /></button>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-[9px] font-black text-slate-500 uppercase">Inches</span>
+              <div className="flex flex-col items-center bg-slate-800/80 rounded-[1.2rem] p-1 border border-white/5 w-full">
+                <button onClick={() => adjustValue(sDownIn, setSDownIn, 3, 0, 9)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronUp size={20} /></button>
+                <span className="text-2xl font-black tabular-nums py-0.5">{sDownIn}</span>
+                <button onClick={() => adjustValue(sDownIn, setSDownIn, -3, 0, 9)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronDown size={20} /></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* S(up) Input Area */}
+        <div className="bg-slate-900/50 border border-white/5 rounded-[1.8rem] p-4">
+          <h3 className="text-lg font-black text-emerald-400 uppercase tracking-tight mb-4">S(up) Distance</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-[9px] font-black text-slate-500 uppercase">Feet</span>
+              <div className="flex flex-col items-center bg-slate-800/80 rounded-[1.2rem] p-1 border border-white/5 w-full">
+                <button onClick={() => adjustValue(sUpFt, setSUpFt, 1, 0, 50)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronUp size={20} /></button>
+                <span className="text-2xl font-black tabular-nums py-0.5">{sUpFt}</span>
+                <button onClick={() => adjustValue(sUpFt, setSUpFt, -1, 0, 50)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronDown size={20} /></button>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-[9px] font-black text-slate-500 uppercase">Inches</span>
+              <div className="flex flex-col items-center bg-slate-800/80 rounded-[1.2rem] p-1 border border-white/5 w-full">
+                <button onClick={() => adjustValue(sUpIn, setSUpIn, 3, 0, 9)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronUp size={20} /></button>
+                <span className="text-2xl font-black tabular-nums py-0.5">{sUpIn}</span>
+                <button onClick={() => adjustValue(sUpIn, setSUpIn, -3, 0, 9)} className="p-2 text-blue-400 active:scale-75 w-full flex justify-center"><ChevronDown size={20} /></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Calculation Action */}
+        <div className="flex flex-col gap-4 mt-2 mb-12">
+          <button 
+            onClick={calculate} 
+            disabled={(sDownFt === 0 && sDownIn === 0) || (sUpFt === 0 && sUpIn === 0)}
+            className="w-full bg-blue-600 border-2 border-blue-500 rounded-full py-4 font-black text-xs tracking-[0.2em] uppercase text-white shadow-xl shadow-blue-600/20 active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
+          >
+            Calculate Speed
+          </button>
+
+          {result !== null && (
+            <div className="bg-white/[0.04] border border-blue-500/30 rounded-[1.8rem] p-6 flex flex-col items-start animate-in zoom-in-95 duration-300">
+              <span className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] mb-2 w-full text-left">Corrected Green Speed</span>
+              <div className="text-5xl font-black text-white tabular-nums leading-none mb-1 flex items-center justify-between w-full">
+                <span className="text-left">{formatResult(result)}</span>
+                {slopeCat && (
+                  <div className="flex flex-col items-center">
+                    <span className="text-2xl text-yellow-400 bg-yellow-400/10 px-3 py-1 rounded-xl border border-yellow-400/20 tabular-nums">({slopeCat})</span>
+                    {slopeSub && <span className="text-[10px] font-black text-yellow-500 uppercase mt-1 tracking-widest">{slopeSub}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('landing');
   const [units, setUnits] = useState<UnitSystem>('Yards');
@@ -546,7 +692,8 @@ const App: React.FC = () => {
 
   const [trkActive, setTrkActive] = useState(false);
   const [trkPoints, setTrkPoints] = useState<GeoPoint[]>([]);
-  const [trkPivots, setTrkPivots] = useState<GeoPoint[]>([]);
+  // Fix: Renamed setter to setTrkPivotsArray for consistency with state variable trkPivotsArray
+  const [trkPivotsArray, setTrkPivotsArray] = useState<GeoPoint[]>([]);
   const [holeNum, setHoleNum] = useState(1);
   
   const [mapActive, setMapActive] = useState(false);
@@ -653,7 +800,7 @@ const App: React.FC = () => {
     }
     if (trkPoints.length < 1 && !pos) return { dist: 0, elev: 0 };
     let d = 0;
-    const segments = [trkPoints[0], ...trkPivots];
+    const segments = [trkPoints[0], ...trkPivotsArray];
     if (segments.length > 1) {
       for (let i = 0; i < segments.length - 1; i++) {
         d += calculateDistance(segments[i], segments[i+1]);
@@ -666,7 +813,7 @@ const App: React.FC = () => {
     const startAlt = trkPoints[0]?.alt || pos?.alt || 0;
     const currAlt = pos?.alt || (trkPoints.length > 0 ? trkPoints[trkPoints.length-1].alt : 0) || 0;
     return { dist: d, elev: currAlt - startAlt };
-  }, [trkPoints, trkPivots, trkActive, pos, viewingRecord]);
+  }, [trkPoints, trkPivotsArray, trkActive, pos, viewingRecord]);
 
   const distMult = units === 'Yards' ? 1.09361 : 1.0;
   const elevMult = units === 'Yards' ? 3.28084 : 1.0;
@@ -796,7 +943,7 @@ const App: React.FC = () => {
           </header>
 
           <div className="flex flex-col gap-6">
-            <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setTrkPivots([]); setView('track'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
+            <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setTrkPivotsArray([]); setView('track'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-600/40"><Navigation2 size={28} /></div>
               <h2 className="text-2xl font-black mb-2 uppercase text-blue-500">Distance tracker</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Real-time distance measurement and elevation change</p>
@@ -805,6 +952,11 @@ const App: React.FC = () => {
               <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-600/40"><Target size={28} /></div>
               <h2 className="text-2xl font-black mb-2 uppercase text-emerald-500">Green Mapper</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Green mapping, bunker proportion and Effective Green Diameter calculation</p>
+            </button>
+            <button onClick={() => { setViewingRecord(null); setView('stimp'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
+              <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-500/10 border border-blue-500/20"><Gauge size={28} className="text-blue-500" /></div>
+              <h2 className="text-2xl font-black mb-2 uppercase text-blue-400">Stimp Slopes</h2>
+              <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Speed correction for sloping greens</p>
             </button>
 
             <button onClick={() => setView('manual')} className="mt-2 bg-slate-800/50 border border-white/10 rounded-[1.8rem] py-6 flex items-center justify-center gap-4 active:bg-slate-700 transition-colors">
@@ -853,6 +1005,8 @@ const App: React.FC = () => {
         </div>
       ) : view === 'manual' ? (
         <UserManual onClose={() => setView('landing')} />
+      ) : view === 'stimp' ? (
+        <StimpCalculator onClose={() => setView('landing')} />
       ) : (
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 flex justify-between pointer-events-none">
@@ -876,9 +1030,9 @@ const App: React.FC = () => {
               <TileLayer url={mapStyle === 'Street' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} maxZoom={22} maxNativeZoom={19} />
               <MapController pos={pos} active={trkActive || mapActive} mapPoints={mapPoints} completed={mapCompleted} viewingRecord={viewingRecord} mode={view} />
               {pos && !viewingRecord && <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />}
-              {view === 'track' && (viewingRecord?.pivots || trkPivots).map((p, i) => <CircleMarker key={i} center={[p.lat, p.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
+              {view === 'track' && (viewingRecord?.pivots || trkPivotsArray).map((p, i) => <CircleMarker key={i} center={[p.lat, p.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
               {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord) && (
-                <Polyline positions={(viewingRecord ? viewingRecord.points : [trkPoints[0], ...trkPivots, ...(pos && trkActive ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
+                <Polyline positions={(viewingRecord ? viewingRecord.points : [trkPoints[0], ...trkPivotsArray, ...(pos && trkActive ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
               )}
               {view === 'green' && (viewingRecord?.points || mapPoints).length > 1 && (
                 <>
@@ -1051,7 +1205,7 @@ const App: React.FC = () => {
                             </div>
                           )}
                           <button onClick={() => { 
-                            if(!trkActive) { setTrkActive(true); setTrkPoints(pos?[pos]:[]); setTrkPivots([]); } 
+                            if(!trkActive) { setTrkActive(true); setTrkPoints(pos?[pos]:[]); setTrkPivotsArray([]); } 
                             else { 
                               const unitSfx = units === 'Yards' ? 'yd' : 'm';
                               const elevSfx = units === 'Yards' ? 'ft' : 'm';
@@ -1060,7 +1214,7 @@ const App: React.FC = () => {
                                 primaryValue: (trkMetrics.dist * distMult).toFixed(1) + unitSfx, 
                                 secondaryValue: `Elev: ${(trkMetrics.elev * elevMult).toFixed(1)}${elevSfx}`, 
                                 points: [trkPoints[0], pos].filter(Boolean) as GeoPoint[], 
-                                pivots: trkPivots,
+                                pivots: trkPivotsArray,
                                 holeNumber: holeNum
                               }); 
                               setTrkActive(false); 
@@ -1068,8 +1222,8 @@ const App: React.FC = () => {
                           }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
                           {trkActive && (
                             <div className="flex-[1.2] flex gap-2">
-                              <button onClick={() => { if (trkPivots.length < 3 && pos) setTrkPivots([...trkPivots, pos]); }} disabled={trkPivots.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({trkPivots.length})</div></button>
-                              {trkPivots.length > 0 && <button onClick={() => setTrkPivots(prev => prev.slice(0, -1))} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
+                              <button onClick={() => { if (trkPivotsArray.length < 3 && pos) setTrkPivotsArray([...trkPivotsArray, pos]); }} disabled={trkPivotsArray.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({trkPivotsArray.length})</div></button>
+                              {trkPivotsArray.length > 0 && <button onClick={() => setTrkPivotsArray(prev => prev.slice(0, -1))} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
                             </div>
                           )}
                         </div>
