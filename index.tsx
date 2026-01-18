@@ -204,6 +204,12 @@ const isPointInPolygon = (p: {x: number, y: number}, polygon: {x: number, y: num
   return inside;
 };
 
+const getAccuracyColor = (accuracy: number): string => {
+  if (accuracy < 2) return 'rgba(34, 197, 94, 0.4)'; // Green
+  if (accuracy <= 5) return 'rgba(234, 179, 8, 0.4)'; // Yellow
+  return 'rgba(239, 68, 68, 0.4)'; // Red
+};
+
 const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false) => {
   if (points.length < 3) return null;
   const R = 6371e3;
@@ -829,7 +835,7 @@ const App: React.FC = () => {
   }, [pos, mapActive, isBunker, mapPoints.length, handleFinalizeGreen]);
 
   const trkMetrics = useMemo(() => {
-    if (!trkActive && !viewingRecord) return { dist: 0, elev: 0 };
+    if (!trkActive && !viewingRecord && trkPoints.length < 2) return { dist: 0, elev: 0 };
     if (viewingRecord && viewingRecord.type === 'Track') {
        let d = 0;
        for (let i = 0; i < viewingRecord.points.length - 1; i++) {
@@ -839,22 +845,28 @@ const App: React.FC = () => {
        const endAlt = viewingRecord.points[viewingRecord.points.length-1]?.alt || 0;
        return { dist: d, elev: endAlt - startAlt };
     }
+    
+    // In active mode or post-stop mode (where trkPoints contains path)
     if (trkPoints.length < 1 && !pos) return { dist: 0, elev: 0 };
+    
     let d = 0;
-    const segments = [trkPoints[0], ...trkPivotsArray];
-    if (segments.length > 1) {
-      for (let i = 0; i < segments.length - 1; i++) {
-        d += calculateDistance(segments[i], segments[i+1]);
+    // Calculate distance through all stored points (Start + Pivots)
+    if (trkPoints.length > 1) {
+      for (let i = 0; i < trkPoints.length - 1; i++) {
+        d += calculateDistance(trkPoints[i], trkPoints[i+1]);
       }
     }
-    const lastAnchor = segments[segments.length - 1];
+    
+    const lastAnchor = trkPoints[trkPoints.length - 1];
+    // While tracking, dynamically add distance to current position
     if (trkActive && pos && lastAnchor) {
       d += calculateDistance(lastAnchor, pos);
     }
+    
     const startAlt = trkPoints[0]?.alt || pos?.alt || 0;
-    const currAlt = pos?.alt || (trkPoints.length > 0 ? trkPoints[trkPoints.length-1].alt : 0) || 0;
+    const currAlt = (trkActive && pos) ? (pos.alt || 0) : (trkPoints.length > 0 ? (trkPoints[trkPoints.length-1].alt || 0) : 0);
     return { dist: d, elev: currAlt - startAlt };
-  }, [trkPoints, trkPivotsArray, trkActive, pos, viewingRecord]);
+  }, [trkPoints, trkActive, pos, viewingRecord]);
 
   const distMult = units === 'Yards' ? 1.09361 : 1.0;
   const elevMult = units === 'Yards' ? 3.28084 : 1.0;
@@ -1065,20 +1077,57 @@ const App: React.FC = () => {
               <button onClick={() => setMapStyle(s => s === 'Street' ? 'Satellite' : 'Street')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3.5 rounded-full text-blue-400 shadow-2xl active:scale-90"><Layers size={20} /></button>
             </div>
           </div>
+
+          <div className="absolute top-20 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
+            {pos && (
+              <div className="bg-slate-900/90 border border-white/10 p-3 rounded-[1.5rem] shadow-2xl backdrop-blur-md flex flex-col gap-2 pointer-events-auto">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full shadow-lg ${pos.altAccuracy ? 'bg-blue-500 animate-pulse' : (pos.alt ? 'bg-emerald-500' : 'bg-amber-500')}`} />
+                  <div className="flex flex-col">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Vertical</span>
+                    <span className="text-[10px] font-black text-white tabular-nums">±{pos.altAccuracy?.toFixed(1) || 'Searching...'}m</span>
+                  </div>
+                </div>
+                <div className="h-px bg-white/5 w-full" />
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full shadow-lg ${pos.accuracy < 3 ? 'bg-emerald-500' : (pos.accuracy < 10 ? 'bg-amber-500' : 'bg-red-500')}`} />
+                  <div className="flex flex-col">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Horizontal</span>
+                    <span className="text-[10px] font-black text-white tabular-nums">±{pos.accuracy?.toFixed(1)}m</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           
           <main className="flex-1">
             <MapContainer center={[0, 0]} zoom={2} className="h-full w-full" zoomControl={false} attributionControl={false} style={{ backgroundColor: '#020617' }}>
               <TileLayer url={mapStyle === 'Street' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} maxZoom={22} maxNativeZoom={19} />
               <MapController pos={pos} active={trkActive || mapActive} mapPoints={mapPoints} completed={mapCompleted} viewingRecord={viewingRecord} mode={view} />
-              {pos && !viewingRecord && <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />}
+              {pos && !viewingRecord && (
+                <>
+                  <Circle center={[pos.lat, pos.lng]} radius={pos.accuracy} pathOptions={{ color: 'transparent', fillColor: getAccuracyColor(pos.accuracy), fillOpacity: 1, weight: 0 }} />
+                  <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />
+                </>
+              )}
               {view === 'track' && (viewingRecord?.pivots || trkPivotsArray).map((p, i) => <CircleMarker key={i} center={[p.lat, p.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
               {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord) && (
-                <Polyline positions={(viewingRecord ? viewingRecord.points : [trkPoints[0], ...trkPivotsArray, ...(pos && trkActive ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
+                <Polyline positions={(viewingRecord ? viewingRecord.points : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
               )}
               {view === 'green' && (viewingRecord?.points || mapPoints).length > 1 && (
                 <>
                   <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.1} weight={0} />
                   {(viewingRecord?.points || mapPoints).map((p, i, arr) => i > 0 && <Polyline key={i} positions={[[arr[i-1].lat, arr[i-1].lng], [p.lat, p.lng]]} color={p.type === 'bunker' ? '#facc15' : '#10b981'} weight={p.type === 'bunker' ? 7 : 4} />)}
+                  {(viewingRecord || mapCompleted) && (viewingRecord?.points || mapPoints).length > 2 && (
+                    <Polyline 
+                      positions={[
+                        [(viewingRecord?.points || mapPoints)[(viewingRecord?.points || mapPoints).length - 1].lat, (viewingRecord?.points || mapPoints)[(viewingRecord?.points || mapPoints).length - 1].lng],
+                        [(viewingRecord?.points || mapPoints)[0].lat, (viewingRecord?.points || mapPoints)[0].lng]
+                      ]} 
+                      color={(viewingRecord?.points || mapPoints)[0].type === 'bunker' ? '#facc15' : '#10b981'} 
+                      weight={(viewingRecord?.points || mapPoints)[0].type === 'bunker' ? 7 : 4} 
+                    />
+                  )}
                   {(viewingRecord || mapCompleted) && analysis?.shape && (
                     <>
                       {(analysis.shape as any).anomalousResult ? (
@@ -1246,15 +1295,23 @@ const App: React.FC = () => {
                             </div>
                           )}
                           <button onClick={() => { 
-                            if(!trkActive) { setTrkActive(true); setTrkPoints(pos?[pos]:[]); setTrkPivotsArray([]); } 
+                            if(!trkActive) { 
+                              setTrkActive(true); 
+                              setTrkPoints(pos ? [pos] : []); 
+                              setTrkPivotsArray([]); 
+                            } 
                             else { 
+                              // Lock the final position into the path
+                              const finalPath = [...trkPoints, pos].filter(Boolean) as GeoPoint[];
+                              setTrkPoints(finalPath);
+                              
                               const unitSfx = units === 'Yards' ? 'yd' : 'm';
                               const elevSfx = units === 'Yards' ? 'ft' : 'm';
                               saveRecord({ 
                                 type: 'Track', 
                                 primaryValue: (trkMetrics.dist * distMult).toFixed(1) + unitSfx, 
                                 secondaryValue: `Elev: ${(trkMetrics.elev * elevMult).toFixed(1)}${elevSfx}`, 
-                                points: [trkPoints[0], pos].filter(Boolean) as GeoPoint[], 
+                                points: finalPath, 
                                 pivots: trkPivotsArray,
                                 holeNumber: holeNum
                               }); 
@@ -1263,8 +1320,16 @@ const App: React.FC = () => {
                           }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
                           {trkActive && (
                             <div className="flex-[1.2] flex gap-2">
-                              <button onClick={() => { if (trkPivotsArray.length < 3 && pos) setTrkPivotsArray([...trkPivotsArray, pos]); }} disabled={trkPivotsArray.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({trkPivotsArray.length})</div></button>
-                              {trkPivotsArray.length > 0 && <button onClick={() => setTrkPivotsArray(prev => prev.slice(0, -1))} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
+                              <button onClick={() => { 
+                                if (trkPivotsArray.length < 3 && pos) {
+                                  setTrkPivotsArray([...trkPivotsArray, pos]);
+                                  setTrkPoints(prev => [...prev, pos]);
+                                }
+                              }} disabled={trkPivotsArray.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({trkPivotsArray.length})</div></button>
+                              {trkPivotsArray.length > 0 && <button onClick={() => {
+                                setTrkPivotsArray(prev => prev.slice(0, -1));
+                                setTrkPoints(prev => prev.slice(0, -1));
+                              }} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
                             </div>
                           )}
                         </div>
