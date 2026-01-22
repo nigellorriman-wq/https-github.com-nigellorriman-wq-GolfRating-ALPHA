@@ -35,6 +35,7 @@ type AppView = 'landing' | 'track' | 'green' | 'manual' | 'stimp';
 type UnitSystem = 'Yards' | 'Metres';
 type FontSize = 'small' | 'medium' | 'large';
 type RatingGender = 'Men' | 'Women'; // New type for gender selection
+type TrackProfileView = 'Rater\'s Walk' | 'Scratch' | 'Bogey'; // New type for track record viewing
 
 interface GeoPoint {
   lat: number;
@@ -164,6 +165,26 @@ const calculateDistance = (p1: {lat: number, lng: number}, p2: {lat: number, lng
   const Δλ = (p2.lng - p1.lng) * Math.PI / 180;
   const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const calculatePathDistanceAndElevation = (path: GeoPoint[], distMult: number, elevMult: number) => {
+  let distance = 0;
+  let netElevation = 0;
+
+  if (path.length > 1) {
+    for (let k = 0; k < path.length - 1; k++) {
+      const p1 = path[k];
+      const p2 = path[k+1];
+      distance += calculateDistance(p1, p2);
+    }
+    const startAlt = path[0]?.alt || 0;
+    const endAlt = path[path.length - 1]?.alt || 0;
+    netElevation = (endAlt - startAlt); // Raw elevation difference
+  }
+  return {
+    distance: distance * distMult,
+    elevation: netElevation * elevMult,
+  };
 };
 
 const calculateArea = (points: GeoPoint[]): number => {
@@ -608,14 +629,15 @@ const calculateEffectivePathsAndMetrics = (
         shouldBeStraight = true; // Fallback for edge cases or non-contiguous segments
       } else {
         // Check for skipped pivots *between* p1 and p2 in the rater's actual path
-        const relevantRaterPathSegment = raterPathPoints.slice(p1IndexInRaterPath + 1, p2IndexInRaterPath); // points strictly between p1 and p2
+        // Points strictly between p1 and p2 (exclusive of p1 and p2 themselves)
+        const segmentInRaterPath = raterPathPoints.slice(p1IndexInRaterPath + 1, p2IndexInRaterPath); 
 
         if (isScratchPath) {
           // Scratch path is straight if p2 is a 'scratch_cut' pivot,
           // OR if it's skipping any 'bogey_round' pivot *between* p1 and p2
           const p2IsScratchCutPivot = sortedPivots.some(p => p.point.timestamp === p2.timestamp && p.type === 'scratch_cut');
           const skippedBogeyRoundPivots = sortedPivots.filter(
-            p => p.type === 'bogey_round' && relevantRaterPathSegment.some(rp => rp.timestamp === p.point.timestamp)
+            p => p.type === 'bogey_round' && segmentInRaterPath.some(rp => rp.timestamp === p.point.timestamp)
           );
           if (p2IsScratchCutPivot || skippedBogeyRoundPivots.length > 0) {
             shouldBeStraight = true;
@@ -623,7 +645,7 @@ const calculateEffectivePathsAndMetrics = (
         } else { // Bogey path
           // Bogey path is straight if it's skipping any 'scratch_cut' pivot *between* p1 and p2
           const skippedScratchCutPivots = sortedPivots.filter(
-            p => p.type === 'scratch_cut' && relevantRaterPathSegment.some(rp => rp.timestamp === p.point.timestamp)
+            p => p.type === 'scratch_cut' && segmentInRaterPath.some(rp => rp.timestamp === p.point.timestamp)
           );
           if (skippedScratchCutPivots.length > 0) {
             shouldBeStraight = true;
@@ -651,28 +673,8 @@ const calculateEffectivePathsAndMetrics = (
   const finalBogeyPath = buildFinalPath(bogeyAnchors, false);
 
   // --- 3. Calculate metrics for each path ---
-  const calculateDistanceForPath = (path: GeoPoint[]) => {
-    let distance = 0;
-    if (path.length > 1) {
-      for (let k = 0; k < path.length - 1; k++) {
-        const p1 = path[k];
-        const p2 = path[k+1];
-        distance += calculateDistance(p1, p2);
-      }
-    }
-    return distance * distMult;
-  };
-
-  // Elevation is always from start to end of rater's physical path, regardless of pivots or effective paths.
-  let netElevation = 0;
-  if (raterPathPoints.length > 1) {
-    const startAlt = raterPathPoints[0]?.alt || 0;
-    const endAlt = raterPathPoints[raterPathPoints.length - 1]?.alt || 0;
-    netElevation = (endAlt - startAlt) * elevMult;
-  }
-
-  const scratchDistance = calculateDistanceForPath(finalScratchPath);
-  const bogeyDistance = calculateDistanceForPath(finalBogeyPath);
+  const scratchMetrics = calculatePathDistanceAndElevation(finalScratchPath, distMult, elevMult);
+  const bogeyMetrics = calculatePathDistanceAndElevation(finalBogeyPath, distMult, elevMult);
 
   return {
     effectivePaths: {
@@ -680,12 +682,12 @@ const calculateEffectivePathsAndMetrics = (
       bogey: finalBogeyPath,
     },
     effectiveDistances: {
-      scratch: scratchDistance,
-      bogey: bogeyDistance,
+      scratch: scratchMetrics.distance,
+      bogey: bogeyMetrics.distance,
     },
     effectiveElevations: {
-      scratch: netElevation, // Single net elevation
-      bogey: netElevation,   // Same single net elevation for bogey
+      scratch: scratchMetrics.elevation, // Separate net elevation for each path
+      bogey: bogeyMetrics.elevation,   // Separate net elevation for each path
     },
   };
 };
@@ -715,7 +717,7 @@ const MapController: React.FC<{
     if (isUserInteracting.current) return;
 
     if (viewingRecord) {
-      const pts = viewingRecord.points || viewingRecord.raterPathPoints; // Prefer raterPathPoints for track type
+      const pts = viewingRecord.type === 'Green' ? viewingRecord.points : viewingRecord.raterPathPoints; // Prefer raterPathPoints for track type
       if (pts && pts.length > 0) {
         const bounds = L.latLngBounds(pts.map(p => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [40, 40], paddingBottomRight: [40, 240], animate: true });
@@ -953,8 +955,10 @@ const App: React.FC = () => {
   const [units, setUnits] = useState<UnitSystem>('Yards');
   const [mapStyle, setMapStyle] = useState<'Street' | 'Satellite'>('Satellite');
   const [pos, setPos] = useState<GeoPoint | null>(null);
-  const [history, setHistory] = useState<SavedRecord[]>([]);
+  const [history, setHistory] = useState<SavedRecord[]>([]
+);
   const [viewingRecord, setViewingRecord] = useState<SavedRecord | null>(null);
+  const [viewingTrackProfile, setViewingTrackProfile] = useState<TrackProfileView>('Rater\'s Walk'); // New state for track record viewing
 
   const [trkActive, setTrkActive] = useState(false);
   const [trkPoints, setTrkPoints] = useState<GeoPoint[]>([]); // Rater's actual physical path
@@ -1065,22 +1069,18 @@ const App: React.FC = () => {
 
   // Memoized calculation of effective paths and metrics
   const effectiveMetrics = useMemo(() => {
-    // Determine the path for elevation calculation: always the full rater path
-    const elevationPath = [...trkPoints, ...(trkActive && pos ? [pos] : [])].filter(Boolean) as GeoPoint[];
-    let currentNetElevation = 0;
-    if (elevationPath.length > 1) {
-      const startAlt = elevationPath[0]?.alt || 0;
-      const endAlt = elevationPath[elevationPath.length - 1]?.alt || 0;
-      currentNetElevation = (endAlt - startAlt) * elevMult;
-    }
-
-    // If viewing a saved record, use its stored effective data and the single elevation
+    // If viewing a saved record, use its stored effective data
     if (viewingRecord && viewingRecord.type === 'Track' && viewingRecord.effectiveDistances && viewingRecord.effectiveElevations && viewingRecord.effectivePaths) {
+      // Calculate raw rater's path distance and elevation for "Rater's Walk" option
+      const raterPathMetrics = calculatePathDistanceAndElevation(viewingRecord.raterPathPoints || [], distMult, elevMult);
+
       return {
-        dist: viewingRecord.effectiveDistances.scratch,
-        elev: viewingRecord.effectiveElevations.scratch, // Single net elevation
+        distRater: raterPathMetrics.distance,
+        elevRater: raterPathMetrics.elevation,
+        distScratch: viewingRecord.effectiveDistances.scratch,
+        elevScratch: viewingRecord.effectiveElevations.scratch,
         distBogey: viewingRecord.effectiveDistances.bogey,
-        // No separate bogey elevation needed, use the same as scratch or calculate for consistency if needed
+        elevBogey: viewingRecord.effectiveElevations.bogey,
         effectivePaths: viewingRecord.effectivePaths,
       };
     }
@@ -1089,8 +1089,9 @@ const App: React.FC = () => {
     const currentRaterPath = [...trkPoints, ...(trkActive && pos ? [pos] : [])].filter(Boolean) as GeoPoint[];
     if (currentRaterPath.length < 2) {
       return {
-        dist: 0, elev: 0,
-        distBogey: 0,
+        distRater: 0, elevRater: 0,
+        distScratch: 0, elevScratch: 0,
+        distBogey: 0, elevBogey: 0,
         effectivePaths: { scratch: [], bogey: [] }
       };
     }
@@ -1102,10 +1103,16 @@ const App: React.FC = () => {
       elevMult
     );
 
+    // Also calculate raw rater's path distance and elevation for active tracking
+    const raterPathMetrics = calculatePathDistanceAndElevation(currentRaterPath, distMult, elevMult);
+
     return {
-      dist: calculated.effectiveDistances.scratch,
-      elev: calculated.effectiveElevations.scratch, // Single net elevation
+      distRater: raterPathMetrics.distance,
+      elevRater: raterPathMetrics.elevation,
+      distScratch: calculated.effectiveDistances.scratch,
+      elevScratch: calculated.effectiveElevations.scratch,
       distBogey: calculated.effectiveDistances.bogey,
+      elevBogey: calculated.effectiveElevations.bogey,
       effectivePaths: calculated.effectivePaths,
     };
   }, [trkPoints, currentPivots, trkActive, pos, viewingRecord, distMult, elevMult]);
@@ -1230,6 +1237,7 @@ const App: React.FC = () => {
       setTrkActive(false);
       setTrkPoints([]); // Clear current tracking points
       setCurrentPivots([]); // Clear current pivots
+      setViewingTrackProfile('Rater\'s Walk'); // Reset to default view for saved tracks
       if (record.genderRated) setRatingGender(record.genderRated); // Set gender for viewing
     } else {
       setView('green');
@@ -1251,6 +1259,15 @@ const App: React.FC = () => {
     setPendingPivotType(null);
     setShowPivotMenu(false);
   }, []);
+
+  const getPivotColor = (pivotType: PivotRecord['type']): string => {
+    switch (pivotType) {
+      case 'common': return '#3b82f6'; // Blue
+      case 'scratch_cut': return '#10b981'; // Emerald
+      case 'bogey_round': return '#facc15'; // Yellow
+      default: return '#fff';
+    }
+  };
 
   return (
     <div className="flex flex-col h-full w-full bg-[#020617] text-white overflow-hidden absolute inset-0 select-none font-sans">
@@ -1351,7 +1368,7 @@ const App: React.FC = () => {
       ) : (
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 flex justify-between pointer-events-none">
-            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); setShowPivotMenu(false); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
+            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); setShowPivotMenu(false); setViewingTrackProfile('Rater\'s Walk'); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
               <ChevronLeft size={18} className="text-emerald-400" />
               <span className="text-[11px] uppercase tracking-widest font-semibold text-blue-500">Home</span>
             </button>
@@ -1377,16 +1394,24 @@ const App: React.FC = () => {
                     <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />
                   </>
                 )}
-                {/* Rater's physical path (always shown if tracking or viewing a track) */}
-                {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord?.raterPathPoints) && (
+                {/* Rater's physical path (always shown if tracking, or if viewing a track and 'Rater's Walk' is selected) */}
+                {(view === 'track' && trkActive && (trkPoints.length > 0 || pos)) && (
                   <Polyline 
-                    positions={(viewingRecord && viewingRecord.raterPathPoints ? viewingRecord.raterPathPoints : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} 
+                    positions={[...trkPoints, ...(pos && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])].filter(Boolean).map(p => [p.lat, p.lng])} 
                     color="#3b82f6" 
                     weight={5} 
                   />
                 )}
-                {/* Effective Scratch Path (shown when not active or viewing record) */}
-                {view === 'track' && (!trkActive || viewingRecord) && effectiveMetrics.effectivePaths.scratch.length > 1 && (
+                {(view === 'track' && viewingRecord?.type === 'Track' && viewingRecord.raterPathPoints && viewingTrackProfile === 'Rater\'s Walk') && (
+                  <Polyline
+                    positions={viewingRecord.raterPathPoints.map(p => [p.lat, p.lng])}
+                    color="#3b82f6"
+                    weight={5}
+                  />
+                )}
+
+                {/* Effective Scratch Path (shown when not active or viewing record and 'Scratch' is selected) */}
+                {(view === 'track' && (!trkActive || viewingRecord?.type === 'Track') && effectiveMetrics.effectivePaths.scratch.length > 1 && (viewingRecord?.type === 'Track' && viewingTrackProfile === 'Scratch')) && (
                   <Polyline 
                     positions={effectiveMetrics.effectivePaths.scratch.map(p => [p.lat, p.lng])} 
                     color="#10b981" // Emerald for Scratch
@@ -1394,8 +1419,8 @@ const App: React.FC = () => {
                     dashArray="5, 5" // Dashed line to differentiate
                   />
                 )}
-                {/* Effective Bogey Path (shown when not active or viewing record) */}
-                {view === 'track' && (!trkActive || viewingRecord) && effectiveMetrics.effectivePaths.bogey.length > 1 && (
+                {/* Effective Bogey Path (shown when not active or viewing record and 'Bogey' is selected) */}
+                {(view === 'track' && (!trkActive || viewingRecord?.type === 'Track') && effectiveMetrics.effectivePaths.bogey.length > 1 && (viewingRecord?.type === 'Track' && viewingTrackProfile === 'Bogey')) && (
                   <Polyline 
                     positions={effectiveMetrics.effectivePaths.bogey.map(p => [p.lat, p.lng])} 
                     color="#facc15" // Yellow for Bogey
@@ -1404,8 +1429,40 @@ const App: React.FC = () => {
                   />
                 )}
 
-                {/* Pivot points for the rater's path (always shown in track view) */}
-                {view === 'track' && (viewingRecord?.pivotPoints || currentPivots).map((p, i) => <CircleMarker key={i} center={[p.point.lat, p.point.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
+                {/* Pivot points */}
+                {view === 'track' && (
+                  <>
+                    {/* Pivots for active tracking */}
+                    {!viewingRecord && currentPivots.map((p, i) => (
+                      <CircleMarker key={`active-pivot-${i}`} center={[p.point.lat, p.point.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: getPivotColor(p.type), fillOpacity: 1, weight: 2 }} />
+                    ))}
+                    {/* Pivots for viewing a saved record */}
+                    {viewingRecord?.type === 'Track' && viewingRecord.pivotPoints && viewingRecord.pivotPoints.map((p, i) => {
+                      let renderPivot = false;
+                      let fillColor = '#3b82f6'; // Default Rater's Walk pivot color
+                      let radius = 5;
+
+                      if (viewingTrackProfile === 'Rater\'s Walk') {
+                        renderPivot = true;
+                      } else if (viewingTrackProfile === 'Scratch') {
+                        if (p.type === 'common' || p.type === 'scratch_cut') {
+                          renderPivot = true;
+                          fillColor = '#10b981'; // Highlight for Scratch
+                          radius = 7; // Larger radius for highlight
+                        }
+                      } else if (viewingTrackProfile === 'Bogey') {
+                        if (p.type === 'common' || p.type === 'bogey_round') {
+                          renderPivot = true;
+                          fillColor = '#facc15'; // Highlight for Bogey
+                          radius = 7; // Larger radius for highlight
+                        }
+                      }
+                      return renderPivot ? (
+                        <CircleMarker key={`saved-pivot-${i}`} center={[p.point.lat, p.point.lng]} radius={radius} pathOptions={{ color: '#fff', fillColor: fillColor, fillOpacity: 1, weight: 2 }} />
+                      ) : null;
+                    })}
+                  </>
+                )}
 
                 {/* Green Mapping */}
                 {view === 'green' && (viewingRecord?.points || mapPoints).length > 1 && (
@@ -1481,18 +1538,53 @@ const App: React.FC = () => {
               <div className="pointer-events-auto bg-slate-900/95 border border-white/20 rounded-[2.8rem] px-6 py-3 w-full shadow-2xl backdrop-blur-md">
                 {view === 'track' ? (
                   <>
+                    {viewingRecord && viewingRecord.type === 'Track' && (
+                      <div className="mb-4">
+                        <label htmlFor="view-path-select" className="sr-only">View Path</label>
+                        <select
+                          id="view-path-select"
+                          className="w-full bg-slate-800 border border-white/10 rounded-full py-2 px-4 text-sm font-semibold text-white text-center appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          value={viewingTrackProfile}
+                          onChange={(e) => setViewingTrackProfile(e.target.value as TrackProfileView)}
+                        >
+                          <option value="Rater's Walk">View Path: Rater's Walk</option>
+                          <option value="Scratch">Scratch {viewingRecord.genderRated || 'Men'}</option>
+                          <option value="Bogey">Bogey {viewingRecord.genderRated || 'Men'}</option>
+                        </select>
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center flex flex-col items-center">
                         <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">DISTANCE</span>
-                        <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">S: {effectiveMetrics.dist.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div>
-                        <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter mt-1">B: {effectiveMetrics.distBogey.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div>
+                        {viewingTrackProfile === 'Rater\'s Walk' && (
+                           <div className="text-4xl font-black text-blue-400 tabular-nums leading-none tracking-tighter">
+                              R: {effectiveMetrics.distRater.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
+                           </div>
+                        )}
+                        {viewingTrackProfile === 'Scratch' && (
+                           <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">
+                              S: {effectiveMetrics.distScratch.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
+                           </div>
+                        )}
+                        {viewingTrackProfile === 'Bogey' && (
+                           <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter">
+                              B: {effectiveMetrics.distBogey.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
+                           </div>
+                        )}
                       </div>
                       <div className="text-center border-l border-white/10 flex flex-col items-center">
                         <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
                         {/* Single elevation value display */}
                         <div className="flex-1 flex items-center justify-center"> {/* New wrapper for vertical centering */}
                           <div className={`text-4xl font-black tabular-nums leading-none tracking-tighter ${pos?.altAccuracy === null && pos?.alt === null ? 'text-rose-500' : 'text-yellow-400'}`}>
-                            {effectiveMetrics.elev > 0 ? '+' : ''}{effectiveMetrics.elev.toFixed(1)}<span className="text-[10px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span>
+                            {viewingTrackProfile === 'Rater\'s Walk' ? (
+                               `${effectiveMetrics.elevRater > 0 ? '+' : ''}${effectiveMetrics.elevRater.toFixed(1)}`
+                            ) : viewingTrackProfile === 'Scratch' ? (
+                               `${effectiveMetrics.elevScratch > 0 ? '+' : ''}${effectiveMetrics.elevScratch.toFixed(1)}`
+                            ) : ( // Bogey
+                               `${effectiveMetrics.elevBogey > 0 ? '+' : ''}${effectiveMetrics.elevBogey.toFixed(1)}`
+                            )}
+                            <span className="text-[10px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span>
                           </div>
                         </div>
                       </div>
@@ -1603,7 +1695,7 @@ const App: React.FC = () => {
               </div>
               <div className="pointer-events-auto flex flex-col gap-2 w-full">
                 {viewingRecord ? (
-                  <button onClick={() => { setViewingRecord(null); setView('landing'); }} className="h-14 bg-slate-800 border-2 border-white/10 rounded-full font-black text-xs tracking-[0.2em] uppercase text-white shadow-xl active:scale-95 transition-all">Close Viewer</button>
+                  <button onClick={() => { setViewingRecord(null); setView('landing'); setViewingTrackProfile('Rater\'s Walk'); }} className="h-14 bg-slate-800 border-2 border-white/10 rounded-full font-black text-xs tracking-[0.2em] uppercase text-white shadow-xl active:scale-95 transition-all">Close Viewer</button>
                 ) : (
                   <>
                     {view === 'track' ? (
@@ -1658,7 +1750,7 @@ const App: React.FC = () => {
                               saveRecord({ 
                                 type: 'Track', 
                                 primaryValue: `S: ${calculatedEffectiveMetrics.effectiveDistances.scratch.toFixed(1)}${unitSfx} / B: ${calculatedEffectiveMetrics.effectiveDistances.bogey.toFixed(1)}${unitSfx}`, 
-                                secondaryValue: `Elev: ${calculatedEffectiveMetrics.effectiveElevations.scratch.toFixed(1)}${elevSfx}`, 
+                                secondaryValue: `Elev: S: ${calculatedEffectiveMetrics.effectiveElevations.scratch.toFixed(1)}${elevSfx} / B: ${calculatedEffectiveMetrics.effectiveElevations.bogey.toFixed(1)}${elevSfx}`, 
                                 points: finalRaterPath, // Add points property to satisfy the interface
                                 raterPathPoints: finalRaterPath, // Store rater's full path here
                                 pivotPoints: currentPivots, // Store typed pivots here
@@ -1678,7 +1770,12 @@ const App: React.FC = () => {
                               <button onClick={() => setShowPivotMenu(true)} disabled={currentPivots.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
                               {currentPivots.length > 0 && <button onClick={() => {
                                 setCurrentPivots(prev => prev.slice(0, -1));
-                                setTrkPoints(prev => prev.slice(0, -1)); // Keep rater's path in sync
+                                setTrkPoints(prev => { // Also remove the last point if it was a pivot
+                                  if (prev.length > 0 && prev[prev.length - 1].timestamp === currentPivots[currentPivots.length - 1].point.timestamp) {
+                                    return prev.slice(0, -1);
+                                  }
+                                  return prev;
+                                });
                               }} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
                             </div>
                           )}
