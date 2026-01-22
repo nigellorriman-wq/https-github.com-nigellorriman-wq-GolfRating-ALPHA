@@ -34,6 +34,7 @@ import {
 type AppView = 'landing' | 'track' | 'green' | 'manual' | 'stimp';
 type UnitSystem = 'Yards' | 'Metres';
 type FontSize = 'small' | 'medium' | 'large';
+type RatingGender = 'Men' | 'Women'; // New type for gender selection
 
 interface GeoPoint {
   lat: number;
@@ -45,16 +46,39 @@ interface GeoPoint {
   type?: 'green' | 'bunker';
 }
 
+// New interface for pivot records with type information
+interface PivotRecord {
+  point: GeoPoint;
+  type: 'common' | 'scratch_cut' | 'bogey_round';
+}
+
 interface SavedRecord {
   id: string;
   type: 'Track' | 'Green';
   date: number;
-  primaryValue: string;
-  secondaryValue?: string;
-  egdValue?: string;
-  points: GeoPoint[];
-  pivots?: GeoPoint[];
+  primaryValue: string; // For Track: "S: 380yd / B: 405yd", for Green: "Area"
+  secondaryValue?: string; // For Track: "Elev: S: 10ft / B: 12ft", for Green: "Bunker %"
+  egdValue?: string; // Only for Green type
+  points: GeoPoint[]; // For Green: green perimeter points, For Track: Rater's physical path
+  pivots?: GeoPoint[]; // Deprecated for Track, use pivotPoints
   holeNumber?: number;
+
+  // Track-specific fields (new for multi-profile)
+  raterPathPoints?: GeoPoint[]; // The full physical GPS trace of the rater (replaces `points` for 'Track' type)
+  pivotPoints?: PivotRecord[]; // Explicitly typed pivots for 'Track' type
+  genderRated?: RatingGender; // The selected gender for the rating
+  effectivePaths?: { // The calculated effective paths for each profile
+    scratch: GeoPoint[];
+    bogey: GeoPoint[];
+  };
+  effectiveDistances?: { // The final calculated total distances
+    scratch: number;
+    bogey: number;
+  };
+  effectiveElevations?: { // The final calculated total elevations
+    scratch: number;
+    bogey: number;
+  };
 }
 
 /** --- DOCUMENTATION CONTENT --- **/
@@ -519,7 +543,7 @@ const MapController: React.FC<{
     if (isUserInteracting.current) return;
 
     if (viewingRecord) {
-      const pts = viewingRecord.points;
+      const pts = viewingRecord.points || viewingRecord.raterPathPoints; // Prefer raterPathPoints for track type
       if (pts && pts.length > 0) {
         const bounds = L.latLngBounds(pts.map(p => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [40, 40], paddingBottomRight: [40, 240], animate: true });
@@ -761,9 +785,11 @@ const App: React.FC = () => {
   const [viewingRecord, setViewingRecord] = useState<SavedRecord | null>(null);
 
   const [trkActive, setTrkActive] = useState(false);
-  const [trkPoints, setTrkPoints] = useState<GeoPoint[]>([]);
-  const [trkPivotsArray, setTrkPivotsArray] = useState<GeoPoint[]>([]);
+  const [trkPoints, setTrkPoints] = useState<GeoPoint[]>([]); // Rater's actual physical path
+  const [trkPivotsArray, setTrkPivotsArray] = useState<GeoPoint[]>([]); // Old simple pivots
+  const [currentPivots, setCurrentPivots] = useState<PivotRecord[]>([]); // New, typed pivots
   const [holeNum, setHoleNum] = useState(1);
+  const [ratingGender, setRatingGender] = useState<RatingGender>('Men'); // New state for gender selection
   
   const [mapActive, setMapActive] = useState(false);
   const [mapCompleted, setMapCompleted] = useState(false);
@@ -841,7 +867,7 @@ const App: React.FC = () => {
       primaryValue: `${areaVal}${units === 'Yards' ? 'yd²' : 'm²'}`, 
       secondaryValue: `Bunker: ${analysis?.bunkerPct}%`, 
       egdValue: egdStr,
-      points: mapPoints,
+      points: mapPoints, // For Green, 'points' is the perimeter
       holeNumber: holeNum 
     });
     setMapActive(false); setMapCompleted(true);
@@ -862,11 +888,15 @@ const App: React.FC = () => {
     if (!trkActive && !viewingRecord && trkPoints.length < 2) return { dist: 0, elev: 0 };
     if (viewingRecord && viewingRecord.type === 'Track') {
        let d = 0;
-       for (let i = 0; i < viewingRecord.points.length - 1; i++) {
-         d += calculateDistance(viewingRecord.points[i], viewingRecord.points[i+1]);
+       // For a saved track, show the rater's path distance initially
+       const pathPoints = viewingRecord.raterPathPoints || viewingRecord.points;
+       if (pathPoints) {
+         for (let i = 0; i < pathPoints.length - 1; i++) {
+           d += calculateDistance(pathPoints[i], pathPoints[i+1]);
+         }
        }
-       const startAlt = viewingRecord.points[0]?.alt || 0;
-       const endAlt = viewingRecord.points[viewingRecord.points.length-1]?.alt || 0;
+       const startAlt = pathPoints?.[0]?.alt || 0;
+       const endAlt = pathPoints?.[pathPoints.length-1]?.alt || 0;
        return { dist: d, elev: endAlt - startAlt };
     }
     
@@ -901,11 +931,11 @@ const App: React.FC = () => {
   <Document>
     <name>Scottish Golf Export</name>`;
     history.forEach(item => {
-      const coords = item.points.map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
+      const coords = (item.type === 'Track' && item.raterPathPoints ? item.raterPathPoints : item.points).map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
       kml += `
     <Placemark>
       <name>${item.type} - Hole ${item.holeNumber || '?'}</name>
-      <description>Hole:${item.holeNumber || '?'}</description>
+      <description>Hole:${item.holeNumber || '?'}${item.type === 'Track' && item.genderRated ? ` - Gender: ${item.genderRated}` : ''}</description>
       ${item.type === 'Green' ? `
       <Polygon><outerBoundaryIs><LinearRing><coordinates>${coords} ${item.points[0].lng},${item.points[0].lat},${item.points[0].alt || 0}</coordinates></LinearRing></outerBoundaryIs></Polygon>` : `
       <LineString><coordinates>${coords}</coordinates></LineString>`}
@@ -960,7 +990,8 @@ const App: React.FC = () => {
           id: Math.random().toString(36).substr(2, 9),
           date: Date.now() - (i * 1000),
           type: isActuallyGreen ? 'Green' : 'Track',
-          points,
+          points: points, // Always store in 'points' to satisfy interface
+          raterPathPoints: isActuallyGreen ? undefined : points, // Store in 'raterPathPoints' for Track type
           primaryValue: 'Imported',
           secondaryValue: 'KML Data',
           holeNumber: extractedHole > 0 ? extractedHole : undefined
@@ -981,6 +1012,7 @@ const App: React.FC = () => {
           for (let k = 0; k < points.length - 1; k++) totalDist += calculateDistance(points[k], points[k+1]);
           record.primaryValue = `${(totalDist * distMult).toFixed(1)}${units === 'Yards' ? 'yd' : 'm'}`;
           record.secondaryValue = `Elev: 0.0${units === 'Yards' ? 'ft' : 'm'}`;
+          record.genderRated = 'Men'; // Default for imported tracks, no way to know from KML
         }
         newItems.push(record);
       }
@@ -1000,7 +1032,9 @@ const App: React.FC = () => {
     if (record.type === 'Track') {
       setView('track');
       setTrkActive(false);
-      setTrkPoints([]);
+      setTrkPoints([]); // Clear current tracking points
+      setCurrentPivots([]); // Clear current pivots
+      if (record.genderRated) setRatingGender(record.genderRated); // Set gender for viewing
     } else {
       setView('green');
       setMapActive(false);
@@ -1020,11 +1054,31 @@ const App: React.FC = () => {
           </header>
 
           <div className="flex flex-col gap-6">
-            <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setTrkPivotsArray([]); setView('track'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
+            <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setCurrentPivots([]); setView('track'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-600/40"><Navigation2 size={28} /></div>
               <h2 className="text-2xl font-black mb-2 uppercase text-blue-500">Distance tracker</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Real-time distance measurement and elevation change</p>
             </button>
+            
+            {/* New Gender Selection Toggle */}
+            <div className="bg-slate-900/50 border border-white/5 rounded-[1.8rem] py-4 px-6 flex justify-around items-center shadow-lg">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Rating For:</span>
+                <div className="flex bg-slate-800 rounded-full p-1 border border-white/10">
+                    <button 
+                        onClick={() => setRatingGender('Men')}
+                        className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${ratingGender === 'Men' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
+                    >
+                        Men
+                    </button>
+                    <button 
+                        onClick={() => setRatingGender('Women')}
+                        className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${ratingGender === 'Women' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
+                    >
+                        Women
+                    </button>
+                </div>
+            </div>
+
             <button onClick={() => { setViewingRecord(null); setMapPoints([]); setMapCompleted(false); setView('green'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-600/40"><Target size={28} /></div>
               <h2 className="text-2xl font-black mb-2 uppercase text-emerald-500">Green Mapper</h2>
@@ -1113,9 +1167,9 @@ const App: React.FC = () => {
                     <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />
                   </>
                 )}
-                {view === 'track' && (viewingRecord?.pivots || trkPivotsArray).map((p, i) => <CircleMarker key={i} center={[p.lat, p.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
+                {view === 'track' && (viewingRecord?.pivotPoints || currentPivots).map((p, i) => <CircleMarker key={i} center={[p.point.lat, p.point.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
                 {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord) && (
-                  <Polyline positions={(viewingRecord ? viewingRecord.points : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
+                  <Polyline positions={(viewingRecord && viewingRecord.raterPathPoints ? viewingRecord.raterPathPoints : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
                 )}
                 {view === 'green' && (viewingRecord?.points || mapPoints).length > 1 && (
                   <>
@@ -1338,7 +1392,8 @@ const App: React.FC = () => {
                             if(!trkActive) { 
                               setTrkActive(true); 
                               setTrkPoints(pos ? [pos] : []); 
-                              setTrkPivotsArray([]); 
+                              // Reset currentPivots when starting a new track
+                              setCurrentPivots([]); 
                             } 
                             else { 
                               // Lock the final position into the path
@@ -1347,12 +1402,23 @@ const App: React.FC = () => {
                               
                               const unitSfx = units === 'Yards' ? 'yd' : 'm';
                               const elevSfx = units === 'Yards' ? 'ft' : 'm';
+                              
+                              // Placeholder values for effective distances/elevations/paths for now
+                              const placeholderEffectiveDistances = { scratch: (trkMetrics.dist * distMult), bogey: (trkMetrics.dist * distMult) };
+                              const placeholderEffectiveElevations = { scratch: (trkMetrics.elev * elevMult), bogey: (trkMetrics.elev * elevMult) };
+                              const placeholderEffectivePaths = { scratch: finalPath, bogey: finalPath };
+
                               saveRecord({ 
                                 type: 'Track', 
-                                primaryValue: (trkMetrics.dist * distMult).toFixed(1) + unitSfx, 
-                                secondaryValue: `Elev: ${(trkMetrics.elev * elevMult).toFixed(1)}${elevSfx}`, 
-                                points: finalPath, 
-                                pivots: trkPivotsArray,
+                                primaryValue: `S: ${placeholderEffectiveDistances.scratch.toFixed(1)}${unitSfx} / B: ${placeholderEffectiveDistances.bogey.toFixed(1)}${unitSfx}`, 
+                                secondaryValue: `Elev: S: ${placeholderEffectiveElevations.scratch.toFixed(1)}${elevSfx} / B: ${placeholderEffectiveElevations.bogey.toFixed(1)}${elevSfx}`, 
+                                points: finalPath, // Add points property to satisfy the interface
+                                raterPathPoints: finalPath, // Store rater's full path here
+                                pivotPoints: currentPivots, // Store typed pivots here
+                                genderRated: ratingGender, // Store the selected gender
+                                effectiveDistances: placeholderEffectiveDistances,
+                                effectiveElevations: placeholderEffectiveElevations,
+                                effectivePaths: placeholderEffectivePaths,
                                 holeNumber: holeNum
                               }); 
                               setTrkActive(false); 
@@ -1361,14 +1427,16 @@ const App: React.FC = () => {
                           {trkActive && (
                             <div className="flex-[1.2] flex gap-2">
                               <button onClick={() => { 
-                                if (trkPivotsArray.length < 3 && pos) {
-                                  setTrkPivotsArray([...trkPivotsArray, pos]);
+                                // Placeholder for pivot type selection for now
+                                if (pos) {
+                                  // For now, add as 'common' until pivot menu is implemented
+                                  setCurrentPivots(prev => [...prev, { point: pos, type: 'common' }]);
                                   setTrkPoints(prev => [...prev, pos]);
                                 }
-                              }} disabled={trkPivotsArray.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({trkPivotsArray.length})</div></button>
-                              {trkPivotsArray.length > 0 && <button onClick={() => {
-                                setTrkPivotsArray(prev => prev.slice(0, -1));
-                                setTrkPoints(prev => prev.slice(0, -1));
+                              }} disabled={currentPivots.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
+                              {currentPivots.length > 0 && <button onClick={() => {
+                                setCurrentPivots(prev => prev.slice(0, -1));
+                                setTrkPoints(prev => prev.slice(0, -1)); // Keep rater's path in sync
                               }} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
                             </div>
                           )}
