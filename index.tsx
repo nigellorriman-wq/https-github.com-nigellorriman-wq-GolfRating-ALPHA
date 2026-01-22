@@ -1183,7 +1183,7 @@ const App: React.FC = () => {
                       </div>
                       <div className="text-center border-l border-white/10 flex flex-col items-center">
                         <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
-                        <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter">{(trkMetrics.elev * elevMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span></div>
+                        <div className={`text-4xl font-black tabular-nums leading-none tracking-tighter ${pos.altAccuracy === null && pos.alt === null ? 'text-rose-500' : 'text-yellow-400'}`}>{(trkMetrics.elev * elevMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span></div>
                       </div>
                     </div>
                     {pos && !viewingRecord && (
