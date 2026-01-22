@@ -1095,80 +1095,86 @@ const App: React.FC = () => {
           </div>
           
           <main className="flex-1">
-            <MapContainer center={[0, 0]} zoom={2} className="h-full w-full" zoomControl={false} attributionControl={false} style={{ backgroundColor: '#020617' }}>
-              <TileLayer url={mapStyle === 'Street' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} maxZoom={22} maxNativeZoom={19} />
-              <MapController pos={pos} active={trkActive || mapActive} mapPoints={mapPoints} completed={mapCompleted} viewingRecord={viewingRecord} mode={view} />
-              {pos && !viewingRecord && (
-                <>
-                  <Circle center={[pos.lat, pos.lng]} radius={pos.accuracy} pathOptions={{ color: 'transparent', fillColor: getAccuracyColor(pos.accuracy), fillOpacity: 1, weight: 0 }} />
-                  <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />
-                </>
-              )}
-              {view === 'track' && (viewingRecord?.pivots || trkPivotsArray).map((p, i) => <CircleMarker key={i} center={[p.lat, p.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
-              {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord) && (
-                <Polyline positions={(viewingRecord ? viewingRecord.points : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
-              )}
-              {view === 'green' && (viewingRecord?.points || mapPoints).length > 1 && (
-                <>
-                  <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.1} weight={0} />
-                  {(viewingRecord?.points || mapPoints).map((p, i, arr) => i > 0 && <Polyline key={i} positions={[[arr[i-1].lat, arr[i-1].lng], [p.lat, p.lng]]} color={p.type === 'bunker' ? '#facc15' : '#10b981'} weight={p.type === 'bunker' ? 7 : 4} />)}
-                  {(viewingRecord || mapCompleted) && (viewingRecord?.points || mapPoints).length > 2 && (
-                    <Polyline 
-                      positions={[
-                        [(viewingRecord?.points || mapPoints)[(viewingRecord?.points || mapPoints).length - 1].lat, (viewingRecord?.points || mapPoints)[(viewingRecord?.points || mapPoints).length - 1].lng],
-                        [(viewingRecord?.points || mapPoints)[0].lat, (viewingRecord?.points || mapPoints)[0].lng]
-                      ]} 
-                      color={(viewingRecord?.points || mapPoints)[0].type === 'bunker' ? '#facc15' : '#10b981'} 
-                      weight={(viewingRecord?.points || mapPoints)[0].type === 'bunker' ? 7 : 4} 
-                    />
-                  )}
-                  {(viewingRecord || mapCompleted) && analysis?.shape && (
-                    <>
-                      {(analysis.shape as any).anomalousResult ? (
-                        <>
-                          <Polyline positions={(analysis.shape as any).anomalousResult.spine.map((p: any) => [p.lat, p.lng])} color="#22d3ee" weight={5} />
-                          {(analysis.shape as any).anomalousResult.widths.map((w: any, idx: number) => (
-                            <Polyline key={`sampling-${idx}`} positions={[[w.p1.lat, w.p1.lng], [w.p2.lat, w.p2.lng]]} color={w.color} weight={4} dashArray="5, 10" />
-                          ))}
-                        </>
-                      ) : (
-                        <>
-                          {!analysis.shape.isLShape && analysis.shape.pA && (
-                            <>
-                              <Polyline positions={[[analysis.shape.pA.lat, analysis.shape.pA.lng], [analysis.shape.pB.lat, analysis.shape.pB.lng]]} color="#22d3ee" weight={5} />
-                              {analysis.shape.isInconsistent ? (
-                                <>
-                                  <Polyline positions={[[analysis.shape.pC1.lat, analysis.shape.pC1.lng], [analysis.shape.pD1.lat, analysis.shape.pD1.lng]]} color="#facc15" weight={5} />
-                                  <Polyline positions={[[analysis.shape.pC3.lat, analysis.shape.pC3.lng], [analysis.shape.pD3.lat, analysis.shape.pD3.lng]]} color="#facc15" weight={5} />
-                                </>
-                              ) : (
-                                <Polyline positions={[[analysis.shape.pC.lat, analysis.shape.pC.lng], [analysis.shape.pD.lat, analysis.shape.pD.lng]]} color="#facc15" weight={5} />
-                              )}
-                            </>
-                          )}
-                          {analysis.shape.isLShape && (
-                            <>
-                              {analysis.shape.s1?.pA && (
-                                <>
-                                  <Polyline positions={[[analysis.shape.s1.pA.lat, analysis.shape.s1.pA.lng], [analysis.shape.s1.pB.lat, analysis.shape.s1.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
-                                  <Polyline positions={[[analysis.shape.s1.pC.lat, analysis.shape.s1.pC.lng], [analysis.shape.s1.pD.lat, analysis.shape.s1.pD.lng]]} color="#facc15" weight={6} />
-                                </>
-                              )}
-                              {analysis.shape.s2?.pA && (
-                                <>
-                                  <Polyline positions={[[analysis.shape.s2.pA.lat, analysis.shape.s2.pA.lng], [analysis.shape.s2.pB.lat, analysis.shape.s2.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
-                                  <Polyline positions={[[analysis.shape.s2.pC.lat, analysis.shape.s2.pC.lng], [analysis.shape.s2.pD.lat, analysis.shape.s2.pD.lng]]} color="#ea580c" weight={6} />
-                                </>
-                              )}
-                            </>
-                          )}
-                        </>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-            </MapContainer>
+            {(pos || viewingRecord) ? (
+              <MapContainer center={[0, 0]} zoom={2} className="h-full w-full" zoomControl={false} attributionControl={false} style={{ backgroundColor: '#020617' }}>
+                <TileLayer url={mapStyle === 'Street' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} maxZoom={22} maxNativeZoom={19} />
+                <MapController pos={pos} active={trkActive || mapActive} mapPoints={mapPoints} completed={mapCompleted} viewingRecord={viewingRecord} mode={view} />
+                {pos && !viewingRecord && (
+                  <>
+                    <Circle center={[pos.lat, pos.lng]} radius={pos.accuracy} pathOptions={{ color: 'transparent', fillColor: getAccuracyColor(pos.accuracy), fillOpacity: 1, weight: 0 }} />
+                    <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />
+                  </>
+                )}
+                {view === 'track' && (viewingRecord?.pivots || trkPivotsArray).map((p, i) => <CircleMarker key={i} center={[p.lat, p.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
+                {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord) && (
+                  <Polyline positions={(viewingRecord ? viewingRecord.points : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
+                )}
+                {view === 'green' && (viewingRecord?.points || mapPoints).length > 1 && (
+                  <>
+                    <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.1} weight={0} />
+                    {(viewingRecord?.points || mapPoints).map((p, i, arr) => i > 0 && <Polyline key={i} positions={[[arr[i-1].lat, arr[i-1].lng], [p.lat, p.lng]]} color={p.type === 'bunker' ? '#facc15' : '#10b981'} weight={p.type === 'bunker' ? 7 : 4} />)}
+                    {(viewingRecord || mapCompleted) && (viewingRecord?.points || mapPoints).length > 2 && (
+                      <Polyline 
+                        positions={[
+                          [(viewingRecord?.points || mapPoints)[(viewingRecord?.points || mapPoints).length - 1].lat, (viewingRecord?.points || mapPoints)[(viewingRecord?.points || mapPoints).length - 1].lng],
+                          [(viewingRecord?.points || mapPoints)[0].lat, (viewingRecord?.points || mapPoints)[0].lng]
+                        ]} 
+                        color={(viewingRecord?.points || mapPoints)[0].type === 'bunker' ? '#facc15' : '#10b981'} 
+                        weight={(viewingRecord?.points || mapPoints)[0].type === 'bunker' ? 7 : 4} 
+                      />
+                    )}
+                    {(viewingRecord || mapCompleted) && analysis?.shape && (
+                      <>
+                        {(analysis.shape as any).anomalousResult ? (
+                          <>
+                            <Polyline positions={(analysis.shape as any).anomalousResult.spine.map((p: any) => [p.lat, p.lng])} color="#22d3ee" weight={5} />
+                            {(analysis.shape as any).anomalousResult.widths.map((w: any, idx: number) => (
+                              <Polyline key={`sampling-${idx}`} positions={[[w.p1.lat, w.p1.lng], [w.p2.lat, w.p2.lng]]} color={w.color} weight={4} dashArray="5, 10" />
+                            ))}
+                          </>
+                        ) : (
+                          <>
+                            {!analysis.shape.isLShape && analysis.shape.pA && (
+                              <>
+                                <Polyline positions={[[analysis.shape.pA.lat, analysis.shape.pA.lng], [analysis.shape.pB.lat, analysis.shape.pB.lng]]} color="#22d3ee" weight={5} />
+                                {analysis.shape.isInconsistent ? (
+                                  <>
+                                    <Polyline positions={[[analysis.shape.pC1.lat, analysis.shape.pC1.lng], [analysis.shape.pD1.lat, analysis.shape.pD1.lng]]} color="#facc15" weight={5} />
+                                    <Polyline positions={[[analysis.shape.pC3.lat, analysis.shape.pC3.lng], [analysis.shape.pD3.lat, analysis.shape.pD3.lng]]} color="#facc15" weight={5} />
+                                  </>
+                                ) : (
+                                  <Polyline positions={[[analysis.shape.pC.lat, analysis.shape.pC.lng], [analysis.shape.pD.lat, analysis.shape.pD.lng]]} color="#facc15" weight={5} />
+                                )}
+                              </>
+                            )}
+                            {analysis.shape.isLShape && (
+                              <>
+                                {analysis.shape.s1?.pA && (
+                                  <>
+                                    <Polyline positions={[[analysis.shape.s1.pA.lat, analysis.shape.s1.pA.lng], [analysis.shape.s1.pB.lat, analysis.shape.s1.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
+                                    <Polyline positions={[[analysis.shape.s1.pC.lat, analysis.shape.s1.pC.lng], [analysis.shape.s1.pD.lat, analysis.shape.s1.pD.lng]]} color="#facc15" weight={6} />
+                                  </>
+                                )}
+                                {analysis.shape.s2?.pA && (
+                                  <>
+                                    <Polyline positions={[[analysis.shape.s2.pA.lat, analysis.shape.s2.pA.lng], [analysis.shape.s2.pB.lat, analysis.shape.s2.pB.lng]]} color="#22d3ee" weight={5} opacity={0.6} />
+                                    <Polyline positions={[[analysis.shape.s2.pC.lat, analysis.shape.s2.pC.lng], [analysis.shape.s2.pD.lat, analysis.shape.s2.pD.lng]]} color="#ea580c" weight={6} />
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </MapContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full w-full text-white/50 animate-pulse">
+                Waiting for GPS signal...
+              </div>
+            )}
           </main>
 
           <div className="absolute inset-x-0 bottom-0 z-[1000] p-4 pointer-events-none flex flex-col gap-2 items-center pb-12">
