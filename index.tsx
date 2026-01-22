@@ -216,10 +216,14 @@ const getAccuracyTextColor = (accuracy: number): string => {
   return 'text-rose-500';
 };
 
-const getVerticalAccuracyTextColor = (accuracy: number | null, alt: number | null): string => {
-  if (accuracy) return 'text-blue-500'; // Barometric/High Precision
-  if (alt) return 'text-emerald-500'; // Standard 3D
-  return 'text-amber-500'; // Search
+// This function is now used to get the method string, not the color class for the value
+const getVerticalMethod = (accuracy: number | null, alt: number | null): string => {
+  if (accuracy !== null) { // altAccuracy is available, implies higher precision
+    return 'Barometric'; // As per manual: Blue Light (Barometric): Highest precision elevation
+  } else if (alt !== null) { // alt is available, but altAccuracy is null, implies standard 3D GNSS
+    return 'GNSS 3D'; // As per manual: Emerald Light (GNSS 3D): Standard GPS altitude
+  }
+  return 'Vertical (Searching)'; // No lock
 };
 
 const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false) => {
@@ -643,9 +647,9 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       </div>
 
       <div className="flex flex-col gap-4">
-        {/* S(down) Input Area */}
+        {/* s(down) Input Area */}
         <div className="bg-slate-900/50 border border-white/5 rounded-[1.8rem] p-4">
-          <h3 className="text-lg font-black text-orange-400 uppercase tracking-tight mb-4">S(down) Distance</h3>
+          <h3 className="text-lg font-black text-orange-400 uppercase tracking-tight mb-4">s(down) Distance</h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col items-center gap-2">
               <span className="text-[9px] font-black text-slate-500 uppercase">Feet</span>
@@ -674,9 +678,9 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </div>
         </div>
 
-        {/* S(up) Input Area */}
+        {/* s(up) Input Area */}
         <div className="bg-slate-900/50 border border-white/5 rounded-[1.8rem] p-4">
-          <h3 className="text-lg font-black text-emerald-400 uppercase tracking-tight mb-4">S(up) Distance</h3>
+          <h3 className="text-lg font-black text-emerald-400 uppercase tracking-tight mb-4">s(up) Distance</h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col items-center gap-2">
               <span className="text-[9px] font-black text-slate-500 uppercase">Feet</span>
@@ -729,7 +733,7 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               </div>
               <div className="mt-6 pt-6 border-t border-white/10 w-full flex justify-center">
                 <p className="text-[14px] font-light text-white leading-relaxed tracking-tight text-center">
-                  (2x<span className="text-orange-400 font-semibold">S(down)</span> x <span className="text-emerald-400 font-semibold">S(up)</span>)÷(<span className="text-orange-400 font-semibold">S(down)</span>+<span className="text-emerald-400 font-semibold">S(up)</span>)
+                  (2x<span className="text-orange-400 font-semibold">s(down)</span> x <span className="text-emerald-400 font-semibold">s(up)</span>)÷(<span className="text-orange-400 font-semibold">s(down)</span>+<span className="text-emerald-400 font-semibold">s(up)</span>)
                 </p>
               </div>
             </div>
@@ -1184,11 +1188,23 @@ const App: React.FC = () => {
                     </div>
                     {pos && !viewingRecord && (
                       <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-4">
-                        <div className="text-center flex flex-col">
-                          <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                        <div className="text-center flex flex-col items-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                            <span className="text-[10px] text-white/70 font-black uppercase">GNSS</span>
+                          </div>
                         </div>
-                        <div className="text-center border-l border-white/10 flex flex-col">
-                          <span className={`text-[11px] font-black tabular-nums ${getVerticalAccuracyTextColor(pos.altAccuracy, pos.alt)}`}>±{pos.altAccuracy?.toFixed(1) || 'Searching...'}m</span>
+                        <div className="text-center border-l border-white/10 flex flex-col items-center">
+                          {pos.altAccuracy === null && pos.alt === null ? (
+                            <span className="text-[11px] font-black tabular-nums text-red-500 animate-pulse">Searching...</span>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1">
+                              <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.altAccuracy !== null ? pos.altAccuracy : (pos.alt !== null ? 999 : 0))}`}>
+                                ±{(pos.altAccuracy !== null ? pos.altAccuracy : (pos.alt !== null ? 10 : 0)).toFixed(1)}m
+                              </span>
+                              <span className="text-[10px] text-white/70 font-black uppercase">{getVerticalMethod(pos.altAccuracy, pos.alt)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1265,7 +1281,10 @@ const App: React.FC = () => {
                     )}
                     {pos && !viewingRecord && (
                       <div className="mt-2 pt-2 border-t border-white/10 flex flex-col items-center">
-                        <span className={`text-[10px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                        <div className="flex items-center justify-center gap-1">
+                          <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                          <span className="text-[10px] text-white/70 font-black uppercase">GNSS</span>
+                        </div>
                       </div>
                     )}
                   </>
