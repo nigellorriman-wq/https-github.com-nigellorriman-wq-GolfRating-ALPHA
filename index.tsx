@@ -226,6 +226,14 @@ const getVerticalMethod = (accuracy: number | null, alt: number | null): string 
   return 'Vertical (Searching)'; // No lock
 };
 
+const getBunkerPercentageColor = (bunkerPct: number | undefined): string => {
+  if (bunkerPct === undefined) return 'text-white/40'; // Neutral for undefined
+  if (bunkerPct <= 25) return 'text-emerald-400'; // 0% to 25%
+  if (bunkerPct > 25 && bunkerPct <= 50) return 'text-yellow-400'; // 25.01% to 50%
+  if (bunkerPct > 50 && bunkerPct <= 75) return 'text-orange-400'; // 50.01% to 75%
+  return 'text-white'; // > 75%
+};
+
 const getEGDAnalysis = (points: GeoPoint[], forceSimpleAverage: boolean = false) => {
   if (points.length < 3) return null;
   const R = 6371e3;
@@ -967,7 +975,7 @@ const App: React.FC = () => {
           } else {
             record.egdValue = egdObj?.isLShape ? `${egdObj.s1?.egd} / ${egdObj.s2?.egd} yd` : (egdObj ? `${egdObj.egd} yd` : '--');
           }
-          record.secondaryValue = `Bunker: 0%`;
+          record.secondaryValue = `Bunker: ${analysis?.bunkerPct}%`;
         } else {
           let totalDist = 0;
           for (let k = 0; k < points.length - 1; k++) totalDist += calculateDistance(points[k], points[k+1]);
@@ -1220,7 +1228,7 @@ const App: React.FC = () => {
                     <div className="grid grid-cols-3 gap-2 mb-2">
                       <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Sq. Area</span><div className="text-2xl font-black text-emerald-400 tabular-nums">{Math.round((analysis?.area || 0) * (units === 'Yards' ? 1.196 : 1))}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD²' : 'M²'}</span></div></div>
                       <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Perimeter</span><div className="text-2xl font-black text-blue-400 tabular-nums">{((analysis?.perimeter || 0) * distMult).toFixed(1)}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Bunker%</span><div className="text-2xl font-black text-orange-400 tabular-nums">{analysis?.bunkerPct || 0}%</div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Bunker%</span><div className={`text-2xl font-black ${getBunkerPercentageColor(analysis?.bunkerPct)} tabular-nums`}>{analysis?.bunkerPct || 0}%</div></div>
                     </div>
                     {analysis?.shape && (
                       <div className="bg-white/[0.04] rounded-[2rem] px-5 py-2 border border-white/10 shadow-inner">
