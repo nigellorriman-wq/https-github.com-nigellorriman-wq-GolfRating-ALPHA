@@ -1131,7 +1131,7 @@ const App: React.FC = () => {
       <description>Hole:${item.holeNumber || '?'}${item.type === 'Track' && item.genderRated ? ` - Gender: ${item.genderRated}` : ''}</description>
       ${item.type === 'Green' ? `
       <Polygon><outerBoundaryIs><LinearRing><coordinates>${coords} ${item.points[0].lng},${item.points[0].lat},${item.points[0].alt || 0}</coordinates></LinearRing></outerBoundaryIs></Polygon>` : `
-      <LineString><coordinates>${coords}</coordinates></LineString>`}
+      <LineString><coordinates>${coords}</LineString></LineString>`}
     </Placemark>`;
     });
     kml += `</Document></kml>`;
@@ -1558,34 +1558,21 @@ const App: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center flex flex-col items-center">
                         <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">DISTANCE</span>
-                        {viewingTrackProfile === 'Rater\'s Walk' && (
-                           <div className="text-4xl font-black text-blue-400 tabular-nums leading-none tracking-tighter">
-                              R: {effectiveMetrics.distRater.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
-                           </div>
-                        )}
-                        {viewingTrackProfile === 'Scratch' && (
-                           <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">
-                              S: {effectiveMetrics.distScratch.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
-                           </div>
-                        )}
-                        {viewingTrackProfile === 'Bogey' && (
-                           <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter">
-                              B: {effectiveMetrics.distBogey.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
-                           </div>
-                        )}
+                        <div className="flex gap-4"> {/* Increased gap for better spacing */}
+                            <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">
+                                S: {effectiveMetrics.distScratch.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
+                            </div>
+                            <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter">
+                                B: {effectiveMetrics.distBogey.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
+                            </div>
+                        </div>
                       </div>
                       <div className="text-center border-l border-white/10 flex flex-col items-center">
                         <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
-                        {/* Single elevation value display */}
                         <div className="flex-1 flex items-center justify-center"> {/* New wrapper for vertical centering */}
-                          <div className={`text-4xl font-black tabular-nums leading-none tracking-tighter ${pos?.altAccuracy === null && pos?.alt === null ? 'text-rose-500' : 'text-yellow-400'}`}>
-                            {viewingTrackProfile === 'Rater\'s Walk' ? (
-                               `${effectiveMetrics.elevRater > 0 ? '+' : ''}${effectiveMetrics.elevRater.toFixed(1)}`
-                            ) : viewingTrackProfile === 'Scratch' ? (
-                               `${effectiveMetrics.elevScratch > 0 ? '+' : ''}${effectiveMetrics.elevScratch.toFixed(1)}`
-                            ) : ( // Bogey
-                               `${effectiveMetrics.elevBogey > 0 ? '+' : ''}${effectiveMetrics.elevBogey.toFixed(1)}`
-                            )}
+                          <div className={`flex gap-4 text-4xl font-black tabular-nums leading-none tracking-tighter ${pos?.altAccuracy === null && pos?.alt === null ? 'text-rose-500' : ''}`}>
+                            <span className="text-emerald-400">S: {effectiveMetrics.elevScratch > 0 ? '+' : ''}{effectiveMetrics.elevScratch.toFixed(1)}</span>
+                            <span className="text-yellow-400">B: {effectiveMetrics.elevBogey > 0 ? '+' : ''}{effectiveMetrics.elevBogey.toFixed(1)}</span>
                             <span className="text-[10px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span>
                           </div>
                         </div>
