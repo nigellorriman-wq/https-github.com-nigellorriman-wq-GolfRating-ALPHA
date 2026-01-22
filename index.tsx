@@ -920,20 +920,20 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <button 
             onClick={calculate} 
             disabled={(sDownFt === 0 && sDownIn === 0) || (sUpFt === 0 && sUpIn === 0)}
-            className="w-full bg-blue-600 border-2 border-blue-500 rounded-full py-4 font-black text-xs tracking-[0.2em] uppercase text-white shadow-xl shadow-blue-600/20 active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
+            className="w-full bg-blue-600 border-2 border-blue-500 rounded-full py-4 font-bold text-xs tracking-[0.2em] uppercase text-white shadow-xl shadow-blue-600/20 active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
           >
             Calculate Speed
           </button>
 
           {result !== null && (
             <div ref={resultRef} className="bg-white/[0.04] border border-blue-500/30 rounded-[1.8rem] p-6 flex flex-col items-start animate-in zoom-in-95 duration-300">
-              <span className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] mb-2 w-full text-left">Corrected Green Speed</span>
-              <div className="text-5xl font-black text-white tabular-nums leading-none mb-1 flex items-center justify-between w-full">
+              <span className="text-[9px] font-bold text-blue-400 uppercase tracking-[0.3em] mb-2 w-full text-left">Corrected Green Speed</span>
+              <div className="text-5xl font-bold text-white tabular-nums leading-none mb-1 flex items-center justify-between w-full">
                 <span className="text-left">{formatResult(result)}</span>
                 {slopeCat && (
                   <div className="flex flex-col items-center">
                     <span className="text-2xl text-yellow-400 bg-yellow-400/10 px-3 py-1 rounded-xl border border-yellow-400/20 tabular-nums">({slopeCat})</span>
-                    {slopeSub && <span className="text-[14px] font-black text-yellow-500 uppercase mt-1 tracking-widest">{slopeSub}</span>}
+                    {slopeSub && <span className="text-[14px] font-bold text-yellow-500 uppercase mt-1 tracking-widest">{slopeSub}</span>}
                   </div>
                 )}
               </div>
@@ -1211,7 +1211,7 @@ const App: React.FC = () => {
           );
 
           record.primaryValue = `S: ${calculatedKMLMetrics.effectiveDistances.scratch.toFixed(1)}${units === 'Yards' ? 'yd' : 'm'} / B: ${calculatedKMLMetrics.effectiveDistances.bogey.toFixed(1)}${units === 'Yards' ? 'yd' : 'm'}`;
-          record.secondaryValue = `Elev: ${calculatedKMLMetrics.effectiveElevations.scratch.toFixed(1)}${units === 'Yards' ? 'ft' : 'm'}`;
+          record.secondaryValue = `Elev: S: ${calculatedKMLMetrics.effectiveElevations.scratch.toFixed(1)}${units === 'Yards' ? 'ft' : 'm'}`;
           record.genderRated = 'Men'; // Default for imported tracks, no way to know from KML
           record.effectiveDistances = calculatedKMLMetrics.effectiveDistances;
           record.effectiveElevations = calculatedKMLMetrics.effectiveElevations;
@@ -1276,20 +1276,20 @@ const App: React.FC = () => {
       {view === 'landing' ? (
         <div className="flex-1 flex flex-col p-6 overflow-y-auto no-scrollbar animate-in fade-in duration-700">
           <header className="mb-12 mt-8 flex flex-col items-center text-center">
-            <h1 className="text-5xl tracking-tighter font-semibold text-blue-500">Scottish Golf</h1>
+            <h1 className="text-5xl tracking-tighter font-bold text-blue-500">Scottish Golf</h1>
             <p className="text-white text-[11px] font-bold tracking-[0.4em] uppercase mt-2 opacity-80">Course Rating Toolkit (ALPHA)</p>
           </header>
 
           <div className="flex flex-col gap-6">
             <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setCurrentPivots([]); setView('track'); setShowPivotMenu(false); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-600/40"><Navigation2 size={28} /></div>
-              <h2 className="text-2xl font-black mb-2 uppercase text-blue-500">Distance tracker</h2>
+              <h2 className="text-2xl font-bold mb-2 uppercase text-blue-500">Distance tracker</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Real-time distance measurement and elevation change</p>
             </button>
             
             {/* New Gender Selection Toggle */}
             <div className="bg-slate-900/50 border border-white/5 rounded-[1.8rem] py-4 px-6 flex justify-around items-center shadow-lg">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Rating For:</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Rating For:</span>
                 <div className="flex bg-slate-800 rounded-full p-1 border border-white/10">
                     <button 
                         onClick={() => setRatingGender('Men')}
@@ -1308,28 +1308,28 @@ const App: React.FC = () => {
 
             <button onClick={() => { setViewingRecord(null); setMapPoints([]); setMapCompleted(false); setView('green'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-600/40"><Target size={28} /></div>
-              <h2 className="text-2xl font-black mb-2 uppercase text-emerald-500">Green Mapper</h2>
+              <h2 className="text-2xl font-bold mb-2 uppercase text-emerald-500">Green Mapper</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Green mapping, bunker proportion and Effective Green Diameter calculation</p>
             </button>
             <button onClick={() => { setViewingRecord(null); setView('stimp'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-500/10 border border-blue-500/20"><Gauge size={28} className="text-blue-500" /></div>
-              <h2 className="text-2xl font-black mb-2 uppercase text-blue-400">Stimp Slopes</h2>
+              <h2 className="text-2xl font-bold mb-2 uppercase text-blue-400">Stimp Slopes</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Speed correction for sloping greens</p>
             </button>
 
             <button onClick={() => setView('manual')} className="mt-2 bg-slate-800/50 border border-white/10 rounded-[1.8rem] py-6 flex items-center justify-center gap-4 active:bg-slate-700 transition-colors">
               <BookOpen size={20} className="text-blue-400" />
-              <span className="text-[11px] font-black uppercase tracking-widest text-white">User Manual</span>
+              <span className="text-[11px] font-bold uppercase tracking-widest text-white">User Manual</span>
             </button>
 
             <div className="flex gap-4 mt-2">
                <button onClick={exportKML} className="flex-1 bg-slate-800/50 border border-blue-500/20 rounded-[1.8rem] py-6 flex items-center justify-center gap-3 active:bg-slate-700 transition-colors shadow-lg">
                 <Download size={18} className="text-blue-500" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-white">Export KML</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white">Export KML</span>
               </button>
               <label className="flex-1 bg-slate-800/50 border border-emerald-500/20 rounded-[1.8rem] py-6 flex items-center justify-center gap-3 active:bg-slate-700 transition-colors shadow-lg cursor-pointer">
                 <Upload size={18} className="text-emerald-500" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-white">Import KML</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white">Import KML</span>
                 <input type="file" accept=".kml" onChange={importKML} className="hidden" />
               </label>
             </div>
@@ -1340,17 +1340,17 @@ const App: React.FC = () => {
               <div className="mb-6">
                 <div className="flex items-center gap-2 px-2 mb-4">
                   <Info size={12} className="text-blue-400" />
-                  <span className="text-[10px] font-black tracking-[0.2em] text-slate-500 uppercase">Assessment History</span>
+                  <span className="text-[10px] font-bold tracking-[0.2em] text-slate-500 uppercase">Assessment History</span>
                 </div>
                 <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
                   {history.map(item => (
                     <div key={item.id} className="relative shrink-0">
                       <button onClick={() => handleOpenRecord(item)} className="bg-slate-900 border border-white/10 px-6 py-5 rounded-[2rem] flex flex-col min-w-[170px] text-left shadow-lg active:scale-95 transition-transform">
                         <div className="flex justify-between items-start mb-1">
-                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{item.type} {item.holeNumber && ` - Hole ${item.holeNumber}`}</span>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">{item.type} {item.holeNumber && ` - Hole ${item.holeNumber}`}</span>
                           {item.type === 'Green' ? <Target size={12} className="text-emerald-500/60" /> : <Navigation2 size={12} className="text-blue-500/60" />}
                         </div>
-                        <span className="text-xl font-black text-white">{item.primaryValue}</span>
+                        <span className="text-xl font-bold text-white">{item.primaryValue}</span>
                         <span className="text-[11px] font-bold text-slate-400 mt-1">{item.egdValue || item.secondaryValue}</span>
                       </button>
                       <button onClick={(e) => { e.stopPropagation(); setHistory(h => h.filter(x => x.id !== item.id)); }} className="absolute -top-2 -right-2 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center border-2 border-[#020617] text-white shadow-xl active:scale-90"><Trash2 size={12} /></button>
@@ -1375,7 +1375,7 @@ const App: React.FC = () => {
             <div className="flex gap-2">
               {((view === 'track' && trkActive) || (view === 'green' && mapActive) || viewingRecord) && (
                 <div className="pointer-events-auto bg-slate-800 border border-white/20 w-[46px] h-[46px] rounded-full flex items-center justify-center shadow-2xl">
-                   <span className="text-xl font-black text-blue-400 tabular-nums">{holeNum}</span>
+                   <span className="text-xl font-bold text-blue-400 tabular-nums">{holeNum}</span>
                 </div>
               )}
               <button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3.5 rounded-full text-emerald-400 shadow-2xl active:scale-90"><Ruler size={20} /></button>
@@ -1557,22 +1557,21 @@ const App: React.FC = () => {
                     )}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center flex flex-col items-center">
-                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">DISTANCE</span>
-                        <div className="flex gap-4"> {/* Increased gap for better spacing */}
-                            <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2 leading-none">DISTANCE</span>
+                        <div className="flex flex-col gap-1"> {/* Changed to flex-col */}
+                            <div className="text-4xl font-bold text-emerald-400 tabular-nums leading-none tracking-tighter">
                                 S: {effectiveMetrics.distScratch.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
                             </div>
-                            <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter">
+                            <div className="text-4xl font-bold text-yellow-400 tabular-nums leading-none tracking-tighter">
                                 B: {effectiveMetrics.distBogey.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
                             </div>
                         </div>
                       </div>
                       <div className="text-center border-l border-white/10 flex flex-col items-center">
-                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
+                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
                         <div className="flex-1 flex items-center justify-center"> {/* New wrapper for vertical centering */}
-                          <div className={`flex gap-4 text-4xl font-black tabular-nums leading-none tracking-tighter ${pos?.altAccuracy === null && pos?.alt === null ? 'text-rose-500' : ''}`}>
-                            <span className="text-emerald-400">S: {effectiveMetrics.elevScratch > 0 ? '+' : ''}{effectiveMetrics.elevScratch.toFixed(1)}</span>
-                            <span className="text-yellow-400">B: {effectiveMetrics.elevBogey > 0 ? '+' : ''}{effectiveMetrics.elevBogey.toFixed(1)}</span>
+                          <div className={`text-4xl font-bold tabular-nums leading-none tracking-tighter ${pos?.altAccuracy === null && pos?.alt === null ? 'text-rose-500' : 'text-yellow-400'}`}>
+                            {`${effectiveMetrics.elevRater > 0 ? '+' : ''}${effectiveMetrics.elevRater.toFixed(1)}`}
                             <span className="text-[10px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span>
                           </div>
                         </div>
@@ -1582,19 +1581,19 @@ const App: React.FC = () => {
                       <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-4">
                         <div className="text-center flex flex-col items-center">
                           <div className="flex items-center justify-center gap-1">
-                            <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
-                            <span className="text-[10px] text-white/70 font-black uppercase">GNSS</span>
+                            <span className={`text-[11px] font-bold tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                            <span className="text-[10px] text-white/70 font-bold uppercase">GNSS</span>
                           </div>
                         </div>
                         <div className="text-center border-l border-white/10 flex flex-col items-center">
                           {pos.altAccuracy === null && pos.alt === null ? (
-                            <span className="text-[11px] font-black tabular-nums text-red-500 animate-pulse">Searching...</span>
+                            <span className="text-[11px] font-bold tabular-nums text-red-500 animate-pulse">Searching...</span>
                           ) : (
                             <div className="flex items-center justify-center gap-1">
-                              <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.altAccuracy !== null ? pos.altAccuracy : (pos.alt !== null ? 999 : 0))}`}>
+                              <span className={`text-[11px] font-bold tabular-nums ${getAccuracyTextColor(pos.altAccuracy !== null ? pos.altAccuracy : (pos.alt !== null ? 999 : 0))}`}>
                                 ±{(pos.altAccuracy !== null ? pos.altAccuracy : (pos.alt !== null ? 10 : 0)).toFixed(1)}m
                               </span>
-                              <span className="text-[10px] text-white/70 font-black uppercase">{getVerticalMethod(pos.altAccuracy, pos.alt)}</span>
+                              <span className="text-[10px] text-white/70 font-bold uppercase">{getVerticalMethod(pos.altAccuracy, pos.alt)}</span>
                             </div>
                           )}
                         </div>
@@ -1604,25 +1603,25 @@ const App: React.FC = () => {
                 ) : (
                   <>
                     <div className="grid grid-cols-3 gap-2 mb-2">
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Sq. Area</span><div className="text-2xl font-black text-emerald-400 tabular-nums">{Math.round((analysis?.area || 0) * (units === 'Yards' ? 1.196 : 1))}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD²' : 'M²'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Perimeter</span><div className="text-2xl font-black text-blue-400 tabular-nums">{((analysis?.perimeter || 0) * distMult).toFixed(1)}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Bunker%</span><div className={`text-2xl font-black ${getBunkerPercentageColor(analysis?.bunkerPct)} tabular-nums`}>{analysis?.bunkerPct || 0}%</div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-bold uppercase block mb-1 tracking-widest">Sq. Area</span><div className="text-2xl font-bold text-emerald-400 tabular-nums">{Math.round((analysis?.area || 0) * (units === 'Yards' ? 1.196 : 1))}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD²' : 'M²'}</span></div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-bold uppercase block mb-1 tracking-widest">Perimeter</span><div className="text-2xl font-bold text-blue-400 tabular-nums">{((analysis?.perimeter || 0) * distMult).toFixed(1)}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-bold uppercase block mb-1 tracking-widest">Bunker%</span><div className={`text-2xl font-bold ${getBunkerPercentageColor(analysis?.bunkerPct)} tabular-nums`}>{analysis?.bunkerPct || 0}%</div></div>
                     </div>
                     {analysis?.shape && (
                       <div className="bg-white/[0.04] rounded-[2rem] px-5 py-2 border border-white/10 shadow-inner">
                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">EGD: {analysis.shape.method}</span>
+                            <span className="text-[8px] font-bold text-blue-400 uppercase tracking-[0.2em]">EGD: {analysis.shape.method}</span>
                             {analysis.shape.isLShape && analysis.shape.hasAnomaly && !(analysis.shape as any).anomalousResult && (
                               <div className="flex items-center gap-1.5 animate-pulse">
                                 <AlertCircle size={10} className="text-red-500" />
-                                <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">Anomaly</span>
+                                <span className="text-[8px] font-bold text-red-500 uppercase tracking-widest">Anomaly</span>
                               </div>
                             )}
                          </div>
 
                          {(analysis.shape as any).anomalousResult ? (
                            <div className="flex flex-col items-center py-1">
-                              <div className="w-full flex justify-between px-2 text-[10px] font-black">
+                              <div className="w-full flex justify-between px-2 text-[10px] font-bold">
                                  <div className="flex items-center gap-1.5">
                                     <span className="text-slate-500 uppercase">L (Curved):</span>
                                     <span className="text-cyan-400 text-xl">{(analysis.shape as any).anomalousResult.curvedLength.toFixed(1)}</span>
@@ -1632,7 +1631,7 @@ const App: React.FC = () => {
                                     <span className="text-white/60 text-xl">{(analysis.shape as any).anomalousResult.straightLength.toFixed(1)}</span>
                                  </div>
                               </div>
-                              <div className="w-full flex justify-around px-2 mt-2 text-[11px] font-black">
+                              <div className="w-full flex justify-around px-2 mt-2 text-[11px] font-bold">
                                  <div className="flex items-center gap-1">
                                     <span className="text-slate-500 uppercase text-[8px]">W1:</span>
                                     <span className="text-xl" style={{ color: (analysis.shape as any).anomalousResult.widths[0]?.color }}>{(analysis.shape as any).anomalousResult.widths[0]?.w.toFixed(1)}</span>
@@ -1650,18 +1649,18 @@ const App: React.FC = () => {
                          ) : analysis.shape.isLShape ? (
                            <div className="flex items-center justify-around gap-2">
                              <div className="text-center border-r border-white/10 pr-6 flex flex-col items-center">
-                               <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none">{analysis.shape.s1?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
-                               <div className="text-[8px] font-black text-yellow-500/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s1?.L.toFixed(1)} W:{analysis.shape.s1?.W.toFixed(1)}</div>
+                               <div className="text-4xl font-bold text-yellow-400 tabular-nums leading-none">{analysis.shape.s1?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
+                               <div className="text-[8px] font-bold text-yellow-500/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s1?.L.toFixed(1)} W:{analysis.shape.s1?.W.toFixed(1)}</div>
                              </div>
                              <div className="text-center pl-6 flex flex-col items-center">
-                               <div className="text-4xl font-black text-orange-500 tabular-nums leading-none">{analysis.shape.s2?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
-                               <div className="text-[8px] font-black text-orange-600/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s2?.L.toFixed(1)} W:{analysis.shape.s2?.W.toFixed(1)}</div>
+                               <div className="text-4xl font-bold text-orange-500 tabular-nums leading-none">{analysis.shape.s2?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
+                               <div className="text-[8px] font-bold text-orange-600/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s2?.L.toFixed(1)} W:{analysis.shape.s2?.W.toFixed(1)}</div>
                              </div>
                            </div>
                          ) : (
                            <div className="text-center py-0.5 flex flex-col items-center">
-                             <div className="text-6xl font-black text-yellow-400 tabular-nums leading-none">{analysis.shape.egd}<span className="text-base ml-1 opacity-40 uppercase">YD</span></div>
-                             <div className="text-[9px] text-white font-black mt-1.5 uppercase tracking-widest">
+                             <div className="text-6xl font-bold text-yellow-400 tabular-nums leading-none">{analysis.shape.egd}<span className="text-base ml-1 opacity-40 uppercase">YD</span></div>
+                             <div className="text-[9px] text-white font-bold mt-1.5 uppercase tracking-widest">
                                <span className="text-cyan-400">LONGEST: {analysis.shape.L.toFixed(1)} YD</span> | 
                                <span className="text-yellow-400 ml-1">
                                  {analysis.shape.isInconsistent ? `SHORTEST: (${analysis.shape.w1_yds.toFixed(1)} + ${analysis.shape.w3_yds.toFixed(1)}) / 2` : `SHORTEST: ${analysis.shape.W.toFixed(1)} YD`}
@@ -1674,8 +1673,8 @@ const App: React.FC = () => {
                     {pos && !viewingRecord && (
                       <div className="mt-2 pt-2 border-t border-white/10 flex flex-col items-center">
                         <div className="flex items-center justify-center gap-1">
-                          <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
-                          <span className="text-[10px] text-white/70 font-black uppercase">GNSS</span>
+                          <span className={`text-[11px] font-bold tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                          <span className="text-[10px] text-white/70 font-bold uppercase">GNSS</span>
                         </div>
                       </div>
                     )}
@@ -1684,7 +1683,7 @@ const App: React.FC = () => {
               </div>
               <div className="pointer-events-auto flex flex-col gap-2 w-full">
                 {viewingRecord ? (
-                  <button onClick={() => { setViewingRecord(null); setView('landing'); setViewingTrackProfile('Rater\'s Walk'); }} className="h-14 bg-slate-800 border-2 border-white/10 rounded-full font-black text-xs tracking-[0.2em] uppercase text-white shadow-xl active:scale-95 transition-all">Close Viewer</button>
+                  <button onClick={() => { setViewingRecord(null); setView('landing'); setViewingTrackProfile('Rater\'s Walk'); }} className="h-14 bg-slate-800 border-2 border-white/10 rounded-full font-bold text-xs tracking-[0.2em] uppercase text-white shadow-xl active:scale-95 transition-all">Close Viewer</button>
                 ) : (
                   <>
                     {view === 'track' ? (
@@ -1700,8 +1699,8 @@ const App: React.FC = () => {
                                   <Minus size={14} />
                                 </button>
                                 <div className="flex flex-col items-center">
-                                  <span className="text-[7px] font-black uppercase tracking-widest text-white/40">HOLE</span>
-                                  <span className="text-xl font-black tabular-nums text-blue-400 leading-none">{holeNum}</span>
+                                  <span className="text-[7px] font-bold uppercase tracking-widest text-white/40">HOLE</span>
+                                  <span className="text-xl font-bold tabular-nums text-blue-400 leading-none">{holeNum}</span>
                                 </div>
                                 <button 
                                   onClick={() => setHoleNum(h => Math.min(18, h + 1))}
@@ -1753,10 +1752,10 @@ const App: React.FC = () => {
                               setShowPivotMenu(false); // Ensure menu is closed on stop track
                               setPendingPivotType(null); // Clear pending type
                             } 
-                          }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
+                          }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-bold text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
                           {trkActive && (
                             <div className="flex-[1.2] flex gap-2">
-                              <button onClick={() => setShowPivotMenu(true)} disabled={currentPivots.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
+                              <button onClick={() => setShowPivotMenu(true)} disabled={currentPivots.length >= 3} className="flex-1 h-14 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
                               {currentPivots.length > 0 && <button onClick={() => {
                                 setCurrentPivots(prev => prev.slice(0, -1));
                                 setTrkPoints(prev => { // Also remove the last point if it was a pivot
@@ -1783,8 +1782,8 @@ const App: React.FC = () => {
                                   <Minus size={14} />
                                 </button>
                                 <div className="flex flex-col items-center">
-                                  <span className="text-[7px] font-black uppercase tracking-widest text-white/40">HOLE</span>
-                                  <span className="text-xl font-black tabular-nums text-emerald-400 leading-none">{holeNum}</span>
+                                  <span className="text-[7px] font-bold uppercase tracking-widest text-white/40">HOLE</span>
+                                  <span className="text-xl font-bold tabular-nums text-emerald-400 leading-none">{holeNum}</span>
                                 </div>
                                 <button 
                                   onClick={() => setHoleNum(h => Math.min(18, h + 1))}
@@ -1795,8 +1794,8 @@ const App: React.FC = () => {
                               </div>
                             </div>
                           )}
-                          <button onClick={() => { if(mapActive) handleFinalizeGreen(); else { setMapPoints(pos?[pos]:[]); setMapActive(true); setMapCompleted(false); } }} className={`flex-1 h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl active:scale-95 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>{mapActive ? 'CLOSE' : 'START GREEN'}</button>
-                          {mapActive && <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all shadow-xl ${isBunker ? 'bg-orange-600 border-orange-500 text-white scale-105' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}>BUNKER (HOLD)</button>}
+                          <button onClick={() => { if(mapActive) handleFinalizeGreen(); else { setMapPoints(pos?[pos]:[]); setMapActive(true); setMapCompleted(false); } }} className={`flex-1 h-14 rounded-full font-bold text-xs tracking-[0.2em] uppercase border-2 shadow-xl active:scale-95 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>{mapActive ? 'CLOSE' : 'START GREEN'}</button>
+                          {mapActive && <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-14 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 transition-all shadow-xl ${isBunker ? 'bg-orange-600 border-orange-500 text-white scale-105' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}>BUNKER (HOLD)</button>}
                         </div>
                       </div>
                     )}
@@ -1809,23 +1808,23 @@ const App: React.FC = () => {
             {showPivotMenu && (
               <div className="absolute inset-x-0 bottom-[160px] z-[1010] p-4 pointer-events-none flex flex-col gap-3 items-center animate-in slide-in-from-bottom duration-200">
                 <div className="pointer-events-auto bg-slate-900/95 border border-white/20 rounded-[2.8rem] p-5 w-full max-w-[300px] shadow-2xl backdrop-blur-md flex flex-col items-center">
-                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3">Set Pivot Type:</span>
+                  <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">Set Pivot Type:</span>
                   <div className="flex gap-2 mb-4 w-full">
                     <button 
                       onClick={() => setPendingPivotType('common')}
-                      className={`flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'common' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
+                      className={`flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'common' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
                     >
                       Both
                     </button>
                     <button 
                       onClick={() => setPendingPivotType('scratch_cut')}
-                      className={`flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'scratch_cut' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
+                      className={`flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'scratch_cut' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
                     >
                       Scratch
                     </button>
                     <button 
                       onClick={() => setPendingPivotType('bogey_round')}
-                      className={`flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'bogey_round' ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
+                      className={`flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'bogey_round' ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
                     >
                       Bogey
                     </button>
@@ -1834,13 +1833,13 @@ const App: React.FC = () => {
                     <button 
                       onClick={handleConfirmPivot} 
                       disabled={!pendingPivotType}
-                      className="flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-blue-600 border-blue-500 text-white shadow-xl active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
+                      className="flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 bg-blue-600 border-blue-500 text-white shadow-xl active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
                     >
                       Confirm Pivot
                     </button>
                     <button 
                       onClick={handleCancelPivot} 
-                      className="flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-slate-700/50 text-slate-400 shadow-xl active:scale-95"
+                      className="flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-slate-700/50 text-slate-400 shadow-xl active:scale-95"
                     >
                       Cancel
                     </button>
