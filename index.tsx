@@ -77,7 +77,7 @@ interface SavedRecord {
   };
   effectiveElevations?: { // The final calculated total elevations
     scratch: number;
-    bogey: number;
+    bogey: GeoPoint[];
   };
 }
 
@@ -791,6 +791,10 @@ const App: React.FC = () => {
   const [holeNum, setHoleNum] = useState(1);
   const [ratingGender, setRatingGender] = useState<RatingGender>('Men'); // New state for gender selection
   
+  // States for the new pivot selection menu
+  const [showPivotMenu, setShowPivotMenu] = useState(false);
+  const [pendingPivotType, setPendingPivotType] = useState<PivotRecord['type'] | null>(null);
+
   const [mapActive, setMapActive] = useState(false);
   const [mapCompleted, setMapCompleted] = useState(false);
   const [mapPoints, setMapPoints] = useState<GeoPoint[]>([]);
@@ -1042,6 +1046,20 @@ const App: React.FC = () => {
     }
   };
 
+  const handleConfirmPivot = useCallback(() => {
+    if (pos && pendingPivotType) {
+      setCurrentPivots(prev => [...prev, { point: pos, type: pendingPivotType }]);
+      setTrkPoints(prev => [...prev, pos]);
+      setPendingPivotType(null);
+      setShowPivotMenu(false);
+    }
+  }, [pos, pendingPivotType]);
+
+  const handleCancelPivot = useCallback(() => {
+    setPendingPivotType(null);
+    setShowPivotMenu(false);
+  }, []);
+
   return (
     <div className="flex flex-col h-full w-full bg-[#020617] text-white overflow-hidden absolute inset-0 select-none font-sans">
       <div className="h-[env(safe-area-inset-top)] bg-[#0f172a] shrink-0"></div>
@@ -1054,7 +1072,7 @@ const App: React.FC = () => {
           </header>
 
           <div className="flex flex-col gap-6">
-            <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setCurrentPivots([]); setView('track'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
+            <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setCurrentPivots([]); setView('track'); setShowPivotMenu(false); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-600/40"><Navigation2 size={28} /></div>
               <h2 className="text-2xl font-black mb-2 uppercase text-blue-500">Distance tracker</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Real-time distance measurement and elevation change</p>
@@ -1141,7 +1159,7 @@ const App: React.FC = () => {
       ) : (
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 flex justify-between pointer-events-none">
-            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
+            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); setShowPivotMenu(false); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
               <ChevronLeft size={18} className="text-emerald-400" />
               <span className="text-[11px] uppercase tracking-widest font-semibold text-blue-500">Home</span>
             </button>
@@ -1392,8 +1410,10 @@ const App: React.FC = () => {
                             if(!trkActive) { 
                               setTrkActive(true); 
                               setTrkPoints(pos ? [pos] : []); 
-                              // Reset currentPivots when starting a new track
+                              // Reset currentPivots and close pivot menu when starting a new track
                               setCurrentPivots([]); 
+                              setShowPivotMenu(false);
+                              setPendingPivotType(null);
                             } 
                             else { 
                               // Lock the final position into the path
@@ -1405,13 +1425,20 @@ const App: React.FC = () => {
                               
                               // Placeholder values for effective distances/elevations/paths for now
                               const placeholderEffectiveDistances = { scratch: (trkMetrics.dist * distMult), bogey: (trkMetrics.dist * distMult) };
-                              const placeholderEffectiveElevations = { scratch: (trkMetrics.elev * elevMult), bogey: (trkMetrics.elev * elevMult) };
                               const placeholderEffectivePaths = { scratch: finalPath, bogey: finalPath };
+                              // Fix: Assign GeoPoint[] to bogey to match the interface.
+                              // Assuming effectiveElevations.bogey is meant to store the path points relevant for bogey elevation.
+                              const placeholderEffectiveElevations = { scratch: (trkMetrics.elev * elevMult), bogey: finalPath };
+
+                              // Calculate bogey elevation from the effective path (placeholderEffectiveElevations.bogey which is finalPath)
+                              const bogeyElevation = placeholderEffectiveElevations.bogey.length > 0
+                                ? ((placeholderEffectiveElevations.bogey[placeholderEffectiveElevations.bogey.length - 1].alt || 0) - (placeholderEffectiveElevations.bogey[0].alt || 0)) * elevMult
+                                : 0;
 
                               saveRecord({ 
                                 type: 'Track', 
                                 primaryValue: `S: ${placeholderEffectiveDistances.scratch.toFixed(1)}${unitSfx} / B: ${placeholderEffectiveDistances.bogey.toFixed(1)}${unitSfx}`, 
-                                secondaryValue: `Elev: S: ${placeholderEffectiveElevations.scratch.toFixed(1)}${elevSfx} / B: ${placeholderEffectiveElevations.bogey.toFixed(1)}${elevSfx}`, 
+                                secondaryValue: `Elev: S: ${placeholderEffectiveElevations.scratch.toFixed(1)}${elevSfx} / B: ${bogeyElevation.toFixed(1)}${elevSfx}`, 
                                 points: finalPath, // Add points property to satisfy the interface
                                 raterPathPoints: finalPath, // Store rater's full path here
                                 pivotPoints: currentPivots, // Store typed pivots here
@@ -1422,18 +1449,13 @@ const App: React.FC = () => {
                                 holeNumber: holeNum
                               }); 
                               setTrkActive(false); 
+                              setShowPivotMenu(false); // Ensure menu is closed on stop track
+                              setPendingPivotType(null); // Clear pending type
                             } 
                           }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
                           {trkActive && (
                             <div className="flex-[1.2] flex gap-2">
-                              <button onClick={() => { 
-                                // Placeholder for pivot type selection for now
-                                if (pos) {
-                                  // For now, add as 'common' until pivot menu is implemented
-                                  setCurrentPivots(prev => [...prev, { point: pos, type: 'common' }]);
-                                  setTrkPoints(prev => [...prev, pos]);
-                                }
-                              }} disabled={currentPivots.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
+                              <button onClick={() => setShowPivotMenu(true)} disabled={currentPivots.length >= 3} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
                               {currentPivots.length > 0 && <button onClick={() => {
                                 setCurrentPivots(prev => prev.slice(0, -1));
                                 setTrkPoints(prev => prev.slice(0, -1)); // Keep rater's path in sync
@@ -1476,6 +1498,50 @@ const App: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {/* Floating Pivot Selection Menu */}
+            {showPivotMenu && (
+              <div className="absolute inset-x-0 bottom-[160px] z-[1010] p-4 pointer-events-none flex flex-col gap-3 items-center animate-in slide-in-from-bottom duration-200">
+                <div className="pointer-events-auto bg-slate-900/95 border border-white/20 rounded-[2.8rem] p-5 w-full max-w-[300px] shadow-2xl backdrop-blur-md flex flex-col items-center">
+                  <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3">Set Pivot Type:</span>
+                  <div className="flex gap-2 mb-4 w-full">
+                    <button 
+                      onClick={() => setPendingPivotType('common')}
+                      className={`flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'common' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
+                    >
+                      Both
+                    </button>
+                    <button 
+                      onClick={() => setPendingPivotType('scratch_cut')}
+                      className={`flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'scratch_cut' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
+                    >
+                      Scratch
+                    </button>
+                    <button 
+                      onClick={() => setPendingPivotType('bogey_round')}
+                      className={`flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'bogey_round' ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
+                    >
+                      Bogey
+                    </button>
+                  </div>
+                  <div className="flex gap-2 w-full">
+                    <button 
+                      onClick={handleConfirmPivot} 
+                      disabled={!pendingPivotType}
+                      className="flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-blue-600 border-blue-500 text-white shadow-xl active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
+                    >
+                      Confirm Pivot
+                    </button>
+                    <button 
+                      onClick={handleCancelPivot} 
+                      className="flex-1 h-12 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-slate-700/50 text-slate-400 shadow-xl active:scale-95"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
