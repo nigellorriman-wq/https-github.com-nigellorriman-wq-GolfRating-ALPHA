@@ -76,8 +76,8 @@ interface SavedRecord {
     bogey: number;
   };
   effectiveElevations?: { // The final calculated total elevations
-    scratch: number;
-    bogey: GeoPoint[];
+    scratch: number; // Changed to number
+    bogey: number; // Changed to number
   };
 }
 
@@ -518,6 +518,178 @@ const analyzeGreenShape = (points: GeoPoint[], concavityThreshold: number = 0.82
   return { ...basic, isLShape: false, hasAnomaly: false, s1: null, s2: null };
 };
 
+
+// --- NEW UTILITY: Generate interpolated line points ---
+const getInterpolatedLine = (p1: GeoPoint, p2: GeoPoint, numSegments: number = 5): GeoPoint[] => {
+  const points: GeoPoint[] = [p1];
+  if (p1.timestamp === p2.timestamp) return points; // Handle same point
+
+  for (let i = 1; i < numSegments; i++) {
+    const t = i / numSegments;
+    points.push({
+      lat: p1.lat + (p2.lat - p1.lat) * t,
+      lng: p1.lng + (p2.lng - p1.lng) * t,
+      alt: p1.alt !== null && p2.alt !== null ? p1.alt + (p2.alt - p1.alt) * t : null,
+      accuracy: (p1.accuracy + p2.accuracy) / 2, // Simple average
+      altAccuracy: p1.altAccuracy !== null && p2.altAccuracy !== null ? (p1.altAccuracy + p2.altAccuracy) / 2 : null,
+      timestamp: p1.timestamp + (p2.timestamp - p1.timestamp) * t // Interpolate timestamp too
+    });
+  }
+  points.push(p2);
+  return points;
+};
+
+
+// --- NEW UTILITY: Calculate Effective Paths and Metrics ---
+const calculateEffectivePathsAndMetrics = (
+  raterPathPoints: GeoPoint[],
+  pivotRecords: PivotRecord[],
+  distMult: number,
+  elevMult: number
+) => {
+  if (raterPathPoints.length < 2) {
+    return {
+      effectivePaths: { scratch: [], bogey: [] },
+      effectiveDistances: { scratch: 0, bogey: 0 },
+      effectiveElevations: { scratch: 0, bogey: 0 }, // Updated structure
+    };
+  }
+
+  const sortedPivots = [...pivotRecords].sort((a, b) => a.point.timestamp - b.point.timestamp);
+  const startPoint = raterPathPoints[0];
+  const endPoint = raterPathPoints[raterPathPoints.length - 1];
+
+  // --- 1. Determine effective anchors for each path ---
+  const getAnchors = (forScratch: boolean): GeoPoint[] => {
+    let anchors: GeoPoint[] = [startPoint];
+    for (const pivot of sortedPivots) {
+      if (forScratch) {
+        if (pivot.type === 'common' || pivot.type === 'scratch_cut') {
+          anchors.push(pivot.point);
+        }
+        // 'bogey_round' pivots are effectively skipped/bypassed for scratch, so not added as anchors
+      } else { // for Bogey
+        if (pivot.type === 'common' || pivot.type === 'bogey_round') {
+          anchors.push(pivot.point);
+        }
+        // 'scratch_cut' pivots are effectively skipped/bypassed for bogey, so not added as anchors
+      }
+    }
+    // Add endpoint if not already the last anchor
+    if (anchors[anchors.length - 1].timestamp !== endPoint.timestamp) {
+      anchors.push(endPoint);
+    }
+    // Deduplicate and sort by timestamp
+    return Array.from(new Map(anchors.map(p => [p.timestamp, p])).values()).sort((a, b) => a.timestamp - b.timestamp);
+  };
+
+  const scratchAnchors = getAnchors(true);
+  const bogeyAnchors = getAnchors(false);
+
+  // --- 2. Build the full path for each profile based on anchors ---
+  const buildFinalPath = (anchors: GeoPoint[], isScratchPath: boolean): GeoPoint[] => {
+    const path: GeoPoint[] = [];
+    if (anchors.length === 0) return [];
+    path.push(anchors[0]); // Add the starting anchor
+
+    for (let i = 0; i < anchors.length - 1; i++) {
+      const p1 = anchors[i];
+      const p2 = anchors[i+1];
+
+      // Determine if this segment should be straight or follow the rater's physical path
+      let shouldBeStraight = false;
+
+      // Find the actual indices of p1 and p2 in the full raterPathPoints
+      const p1IndexInRaterPath = raterPathPoints.findIndex(rp => rp.timestamp === p1.timestamp);
+      const p2IndexInRaterPath = raterPathPoints.findIndex(rp => rp.timestamp === p2.timestamp);
+
+      // If the segment in raterPathPoints is non-existent or invalid, assume straight connection
+      if (p1IndexInRaterPath === -1 || p2IndexInRaterPath === -1 || p1IndexInRaterPath >= p2IndexInRaterPath) {
+        shouldBeStraight = true; // Fallback for edge cases or non-contiguous segments
+      } else {
+        // Check for skipped pivots *between* p1 and p2 in the rater's actual path
+        const relevantRaterPathSegment = raterPathPoints.slice(p1IndexInRaterPath + 1, p2IndexInRaterPath); // points strictly between p1 and p2
+
+        if (isScratchPath) {
+          // Scratch path is straight if p2 is a 'scratch_cut' pivot,
+          // OR if it's skipping any 'bogey_round' pivot *between* p1 and p2
+          const p2IsScratchCutPivot = sortedPivots.some(p => p.point.timestamp === p2.timestamp && p.type === 'scratch_cut');
+          const skippedBogeyRoundPivots = sortedPivots.filter(
+            p => p.type === 'bogey_round' && relevantRaterPathSegment.some(rp => rp.timestamp === p.point.timestamp)
+          );
+          if (p2IsScratchCutPivot || skippedBogeyRoundPivots.length > 0) {
+            shouldBeStraight = true;
+          }
+        } else { // Bogey path
+          // Bogey path is straight if it's skipping any 'scratch_cut' pivot *between* p1 and p2
+          const skippedScratchCutPivots = sortedPivots.filter(
+            p => p.type === 'scratch_cut' && relevantRaterPathSegment.some(rp => rp.timestamp === p.point.timestamp)
+          );
+          if (skippedScratchCutPivots.length > 0) {
+            shouldBeStraight = true;
+          }
+          // Note: Bogey path follows rater path for 'common' or 'bogey_round' pivots.
+          // This implicitly means it's NOT straight unless one of the conditions above forces it.
+        }
+      }
+      
+      if (shouldBeStraight) {
+        path.push(...getInterpolatedLine(p1, p2, 10).slice(1));
+      } else {
+        // Extract actual rater path points between p1 and p2 (inclusive of p2, exclusive of p1)
+        if (p1IndexInRaterPath !== -1 && p2IndexInRaterPath !== -1 && p1IndexInRaterPath < p2IndexInRaterPath) {
+          path.push(...raterPathPoints.slice(p1IndexInRaterPath + 1, p2IndexInRaterPath + 1));
+        } else { // Fallback, unlikely if anchors are from raterPathPoints and not straight
+          path.push(...getInterpolatedLine(p1, p2, 10).slice(1));
+        }
+      }
+    }
+    return path;
+  };
+
+  const finalScratchPath = buildFinalPath(scratchAnchors, true);
+  const finalBogeyPath = buildFinalPath(bogeyAnchors, false);
+
+  // --- 3. Calculate metrics for each path ---
+  const calculateDistanceForPath = (path: GeoPoint[]) => {
+    let distance = 0;
+    if (path.length > 1) {
+      for (let k = 0; k < path.length - 1; k++) {
+        const p1 = path[k];
+        const p2 = path[k+1];
+        distance += calculateDistance(p1, p2);
+      }
+    }
+    return distance * distMult;
+  };
+
+  // Elevation is always from start to end of rater's physical path, regardless of pivots or effective paths.
+  let netElevation = 0;
+  if (raterPathPoints.length > 1) {
+    const startAlt = raterPathPoints[0]?.alt || 0;
+    const endAlt = raterPathPoints[raterPathPoints.length - 1]?.alt || 0;
+    netElevation = (endAlt - startAlt) * elevMult;
+  }
+
+  const scratchDistance = calculateDistanceForPath(finalScratchPath);
+  const bogeyDistance = calculateDistanceForPath(finalBogeyPath);
+
+  return {
+    effectivePaths: {
+      scratch: finalScratchPath,
+      bogey: finalBogeyPath,
+    },
+    effectiveDistances: {
+      scratch: scratchDistance,
+      bogey: bogeyDistance,
+    },
+    effectiveElevations: {
+      scratch: netElevation, // Single net elevation
+      bogey: netElevation,   // Same single net elevation for bogey
+    },
+  };
+};
+
 const MapController: React.FC<{ 
   pos: GeoPoint | null, active: boolean, mapPoints: GeoPoint[], completed: boolean, viewingRecord: SavedRecord | null, mode: AppView
 }> = ({ pos, active, mapPoints, completed, viewingRecord, mode }) => {
@@ -888,46 +1060,56 @@ const App: React.FC = () => {
     }
   }, [pos, mapActive, isBunker, mapPoints.length, handleFinalizeGreen]);
 
-  const trkMetrics = useMemo(() => {
-    if (!trkActive && !viewingRecord && trkPoints.length < 2) return { dist: 0, elev: 0 };
-    if (viewingRecord && viewingRecord.type === 'Track') {
-       let d = 0;
-       // For a saved track, show the rater's path distance initially
-       const pathPoints = viewingRecord.raterPathPoints || viewingRecord.points;
-       if (pathPoints) {
-         for (let i = 0; i < pathPoints.length - 1; i++) {
-           d += calculateDistance(pathPoints[i], pathPoints[i+1]);
-         }
-       }
-       const startAlt = pathPoints?.[0]?.alt || 0;
-       const endAlt = pathPoints?.[pathPoints.length-1]?.alt || 0;
-       return { dist: d, elev: endAlt - startAlt };
-    }
-    
-    // In active mode or post-stop mode (where trkPoints contains path)
-    if (trkPoints.length < 1 && !pos) return { dist: 0, elev: 0 };
-    
-    let d = 0;
-    // Calculate distance through all stored points (Start + Pivots)
-    if (trkPoints.length > 1) {
-      for (let i = 0; i < trkPoints.length - 1; i++) {
-        d += calculateDistance(trkPoints[i], trkPoints[i+1]);
-      }
-    }
-    
-    const lastAnchor = trkPoints[trkPoints.length - 1];
-    // While tracking, dynamically add distance to current position
-    if (trkActive && pos && lastAnchor) {
-      d += calculateDistance(lastAnchor, pos);
-    }
-    
-    const startAlt = trkPoints[0]?.alt || pos?.alt || 0;
-    const currAlt = (trkActive && pos) ? (pos.alt || 0) : (trkPoints.length > 0 ? (trkPoints[trkPoints.length-1].alt || 0) : 0);
-    return { dist: d, elev: currAlt - startAlt };
-  }, [trkPoints, trkActive, pos, viewingRecord]);
-
   const distMult = units === 'Yards' ? 1.09361 : 1.0;
   const elevMult = units === 'Yards' ? 3.28084 : 1.0;
+
+  // Memoized calculation of effective paths and metrics
+  const effectiveMetrics = useMemo(() => {
+    // Determine the path for elevation calculation: always the full rater path
+    const elevationPath = [...trkPoints, ...(trkActive && pos ? [pos] : [])].filter(Boolean) as GeoPoint[];
+    let currentNetElevation = 0;
+    if (elevationPath.length > 1) {
+      const startAlt = elevationPath[0]?.alt || 0;
+      const endAlt = elevationPath[elevationPath.length - 1]?.alt || 0;
+      currentNetElevation = (endAlt - startAlt) * elevMult;
+    }
+
+    // If viewing a saved record, use its stored effective data and the single elevation
+    if (viewingRecord && viewingRecord.type === 'Track' && viewingRecord.effectiveDistances && viewingRecord.effectiveElevations && viewingRecord.effectivePaths) {
+      return {
+        dist: viewingRecord.effectiveDistances.scratch,
+        elev: viewingRecord.effectiveElevations.scratch, // Single net elevation
+        distBogey: viewingRecord.effectiveDistances.bogey,
+        // No separate bogey elevation needed, use the same as scratch or calculate for consistency if needed
+        effectivePaths: viewingRecord.effectivePaths,
+      };
+    }
+
+    // If actively tracking or just stopped, calculate based on current data
+    const currentRaterPath = [...trkPoints, ...(trkActive && pos ? [pos] : [])].filter(Boolean) as GeoPoint[];
+    if (currentRaterPath.length < 2) {
+      return {
+        dist: 0, elev: 0,
+        distBogey: 0,
+        effectivePaths: { scratch: [], bogey: [] }
+      };
+    }
+
+    const calculated = calculateEffectivePathsAndMetrics(
+      currentRaterPath,
+      currentPivots,
+      distMult,
+      elevMult
+    );
+
+    return {
+      dist: calculated.effectiveDistances.scratch,
+      elev: calculated.effectiveElevations.scratch, // Single net elevation
+      distBogey: calculated.effectiveDistances.bogey,
+      effectivePaths: calculated.effectivePaths,
+    };
+  }, [trkPoints, currentPivots, trkActive, pos, viewingRecord, distMult, elevMult]);
+
 
   const exportKML = () => {
     let kml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1012,11 +1194,21 @@ const App: React.FC = () => {
           }
           record.secondaryValue = `Bunker: ${analysis?.bunkerPct}%`;
         } else {
-          let totalDist = 0;
-          for (let k = 0; k < points.length - 1; k++) totalDist += calculateDistance(points[k], points[k+1]);
-          record.primaryValue = `${(totalDist * distMult).toFixed(1)}${units === 'Yards' ? 'yd' : 'm'}`;
-          record.secondaryValue = `Elev: 0.0${units === 'Yards' ? 'ft' : 'm'}`;
+          // For imported KML tracks, we don't have pivot data, so effective paths will be same as raterPathPoints
+          const importedRaterPath = points;
+          const calculatedKMLMetrics = calculateEffectivePathsAndMetrics(
+            importedRaterPath,
+            [], // No pivots from KML import directly
+            distMult,
+            elevMult
+          );
+
+          record.primaryValue = `S: ${calculatedKMLMetrics.effectiveDistances.scratch.toFixed(1)}${units === 'Yards' ? 'yd' : 'm'} / B: ${calculatedKMLMetrics.effectiveDistances.bogey.toFixed(1)}${units === 'Yards' ? 'yd' : 'm'}`;
+          record.secondaryValue = `Elev: ${calculatedKMLMetrics.effectiveElevations.scratch.toFixed(1)}${units === 'Yards' ? 'ft' : 'm'}`;
           record.genderRated = 'Men'; // Default for imported tracks, no way to know from KML
+          record.effectiveDistances = calculatedKMLMetrics.effectiveDistances;
+          record.effectiveElevations = calculatedKMLMetrics.effectiveElevations;
+          record.effectivePaths = calculatedKMLMetrics.effectivePaths;
         }
         newItems.push(record);
       }
@@ -1185,10 +1377,37 @@ const App: React.FC = () => {
                     <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />
                   </>
                 )}
-                {view === 'track' && (viewingRecord?.pivotPoints || currentPivots).map((p, i) => <CircleMarker key={i} center={[p.point.lat, p.point.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
-                {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord) && (
-                  <Polyline positions={(viewingRecord && viewingRecord.raterPathPoints ? viewingRecord.raterPathPoints : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
+                {/* Rater's physical path (always shown if tracking or viewing a track) */}
+                {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord?.raterPathPoints) && (
+                  <Polyline 
+                    positions={(viewingRecord && viewingRecord.raterPathPoints ? viewingRecord.raterPathPoints : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} 
+                    color="#3b82f6" 
+                    weight={5} 
+                  />
                 )}
+                {/* Effective Scratch Path (shown when not active or viewing record) */}
+                {view === 'track' && (!trkActive || viewingRecord) && effectiveMetrics.effectivePaths.scratch.length > 1 && (
+                  <Polyline 
+                    positions={effectiveMetrics.effectivePaths.scratch.map(p => [p.lat, p.lng])} 
+                    color="#10b981" // Emerald for Scratch
+                    weight={4}
+                    dashArray="5, 5" // Dashed line to differentiate
+                  />
+                )}
+                {/* Effective Bogey Path (shown when not active or viewing record) */}
+                {view === 'track' && (!trkActive || viewingRecord) && effectiveMetrics.effectivePaths.bogey.length > 1 && (
+                  <Polyline 
+                    positions={effectiveMetrics.effectivePaths.bogey.map(p => [p.lat, p.lng])} 
+                    color="#facc15" // Yellow for Bogey
+                    weight={4}
+                    dashArray="10, 5" // Different dashed pattern
+                  />
+                )}
+
+                {/* Pivot points for the rater's path (always shown in track view) */}
+                {view === 'track' && (viewingRecord?.pivotPoints || currentPivots).map((p, i) => <CircleMarker key={i} center={[p.point.lat, p.point.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
+
+                {/* Green Mapping */}
                 {view === 'green' && (viewingRecord?.points || mapPoints).length > 1 && (
                   <>
                     <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.1} weight={0} />
@@ -1264,12 +1483,18 @@ const App: React.FC = () => {
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center flex flex-col items-center">
-                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">{viewingRecord ? 'LOG DATA' : 'DISTANCE'}</span>
-                        <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">{(trkMetrics.dist * distMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div>
+                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">DISTANCE</span>
+                        <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">S: {effectiveMetrics.dist.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div>
+                        <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none tracking-tighter mt-1">B: {effectiveMetrics.distBogey.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div>
                       </div>
                       <div className="text-center border-l border-white/10 flex flex-col items-center">
                         <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
-                        <div className={`text-4xl font-black tabular-nums leading-none tracking-tighter ${pos.altAccuracy === null && pos.alt === null ? 'text-rose-500' : 'text-yellow-400'}`}>{(trkMetrics.elev * elevMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span></div>
+                        {/* Single elevation value display */}
+                        <div className="flex-1 flex items-center justify-center"> {/* New wrapper for vertical centering */}
+                          <div className={`text-4xl font-black tabular-nums leading-none tracking-tighter ${pos?.altAccuracy === null && pos?.alt === null ? 'text-rose-500' : 'text-yellow-400'}`}>
+                            {effectiveMetrics.elev > 0 ? '+' : ''}{effectiveMetrics.elev.toFixed(1)}<span className="text-[10px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     {pos && !viewingRecord && (
@@ -1417,35 +1642,30 @@ const App: React.FC = () => {
                             } 
                             else { 
                               // Lock the final position into the path
-                              const finalPath = [...trkPoints, pos].filter(Boolean) as GeoPoint[];
-                              setTrkPoints(finalPath);
+                              const finalRaterPath = [...trkPoints, pos].filter(Boolean) as GeoPoint[];
+                              setTrkPoints(finalRaterPath);
                               
                               const unitSfx = units === 'Yards' ? 'yd' : 'm';
                               const elevSfx = units === 'Yards' ? 'ft' : 'm';
                               
-                              // Placeholder values for effective distances/elevations/paths for now
-                              const placeholderEffectiveDistances = { scratch: (trkMetrics.dist * distMult), bogey: (trkMetrics.dist * distMult) };
-                              const placeholderEffectivePaths = { scratch: finalPath, bogey: finalPath };
-                              // Fix: Assign GeoPoint[] to bogey to match the interface.
-                              // Assuming effectiveElevations.bogey is meant to store the path points relevant for bogey elevation.
-                              const placeholderEffectiveElevations = { scratch: (trkMetrics.elev * elevMult), bogey: finalPath };
-
-                              // Calculate bogey elevation from the effective path (placeholderEffectiveElevations.bogey which is finalPath)
-                              const bogeyElevation = placeholderEffectiveElevations.bogey.length > 0
-                                ? ((placeholderEffectiveElevations.bogey[placeholderEffectiveElevations.bogey.length - 1].alt || 0) - (placeholderEffectiveElevations.bogey[0].alt || 0)) * elevMult
-                                : 0;
+                              const calculatedEffectiveMetrics = calculateEffectivePathsAndMetrics(
+                                finalRaterPath,
+                                currentPivots,
+                                distMult,
+                                elevMult
+                              );
 
                               saveRecord({ 
                                 type: 'Track', 
-                                primaryValue: `S: ${placeholderEffectiveDistances.scratch.toFixed(1)}${unitSfx} / B: ${placeholderEffectiveDistances.bogey.toFixed(1)}${unitSfx}`, 
-                                secondaryValue: `Elev: S: ${placeholderEffectiveElevations.scratch.toFixed(1)}${elevSfx} / B: ${bogeyElevation.toFixed(1)}${elevSfx}`, 
-                                points: finalPath, // Add points property to satisfy the interface
-                                raterPathPoints: finalPath, // Store rater's full path here
+                                primaryValue: `S: ${calculatedEffectiveMetrics.effectiveDistances.scratch.toFixed(1)}${unitSfx} / B: ${calculatedEffectiveMetrics.effectiveDistances.bogey.toFixed(1)}${unitSfx}`, 
+                                secondaryValue: `Elev: ${calculatedEffectiveMetrics.effectiveElevations.scratch.toFixed(1)}${elevSfx}`, 
+                                points: finalRaterPath, // Add points property to satisfy the interface
+                                raterPathPoints: finalRaterPath, // Store rater's full path here
                                 pivotPoints: currentPivots, // Store typed pivots here
                                 genderRated: ratingGender, // Store the selected gender
-                                effectiveDistances: placeholderEffectiveDistances,
-                                effectiveElevations: placeholderEffectiveElevations,
-                                effectivePaths: placeholderEffectivePaths,
+                                effectiveDistances: calculatedEffectiveMetrics.effectiveDistances,
+                                effectiveElevations: calculatedEffectiveMetrics.effectiveElevations,
+                                effectivePaths: calculatedEffectiveMetrics.effectivePaths,
                                 holeNumber: holeNum
                               }); 
                               setTrkActive(false); 
