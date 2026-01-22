@@ -1402,7 +1402,7 @@ const App: React.FC = () => {
                     weight={5} 
                   />
                 )}
-                {(view === 'track' && viewingRecord?.type === 'Track' && viewingRecord.raterPathPoints && viewingTrackProfile === 'Rater\'s Walk') && (
+                {(view === 'track' && !trkActive && viewingRecord?.type === 'Track' && viewingRecord.raterPathPoints && viewingTrackProfile === 'Rater\'s Walk') && (
                   <Polyline
                     positions={viewingRecord.raterPathPoints.map(p => [p.lat, p.lng])}
                     color="#3b82f6"
@@ -1410,8 +1410,9 @@ const App: React.FC = () => {
                   />
                 )}
 
-                {/* Effective Scratch Path (shown when not active or viewing record and 'Scratch' is selected) */}
-                {(view === 'track' && (!trkActive || viewingRecord?.type === 'Track') && effectiveMetrics.effectivePaths.scratch.length > 1 && (viewingRecord?.type === 'Track' && viewingTrackProfile === 'Scratch')) && (
+                {/* Effective Scratch Path (Active Tracking OR Viewing Saved Record and 'Scratch' selected) */}
+                {(view === 'track' && effectiveMetrics.effectivePaths.scratch.length > 1 &&
+                  (trkActive || (viewingRecord?.type === 'Track' && viewingTrackProfile === 'Scratch'))) && (
                   <Polyline 
                     positions={effectiveMetrics.effectivePaths.scratch.map(p => [p.lat, p.lng])} 
                     color="#10b981" // Emerald for Scratch
@@ -1419,8 +1420,9 @@ const App: React.FC = () => {
                     dashArray="5, 5" // Dashed line to differentiate
                   />
                 )}
-                {/* Effective Bogey Path (shown when not active or viewing record and 'Bogey' is selected) */}
-                {(view === 'track' && (!trkActive || viewingRecord?.type === 'Track') && effectiveMetrics.effectivePaths.bogey.length > 1 && (viewingRecord?.type === 'Track' && viewingTrackProfile === 'Bogey')) && (
+                {/* Effective Bogey Path (Active Tracking OR Viewing Saved Record and 'Bogey' selected) */}
+                {(view === 'track' && effectiveMetrics.effectivePaths.bogey.length > 1 &&
+                  (trkActive || (viewingRecord?.type === 'Track' && viewingTrackProfile === 'Bogey'))) && (
                   <Polyline 
                     positions={effectiveMetrics.effectivePaths.bogey.map(p => [p.lat, p.lng])} 
                     color="#facc15" // Yellow for Bogey
