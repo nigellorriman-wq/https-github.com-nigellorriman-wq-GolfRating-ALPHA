@@ -106,7 +106,7 @@ const USER_MANUAL = [
     title: "Distance Tracker",
     color: "text-blue-400",
     icon: <Navigation2 className="text-blue-400" />,
-    content: "Tap 'Start' when you are ready to start tracking the distance. Use 'Pivot' (max 3) at dog-leg corners to measure the true path of the hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other."
+    content: "Tap 'Start' when you are ready to start tracking the distance. Use 'Pivot' (max 6) at dog-leg corners to measure the true path of the hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other."
   },
   {
     title: "Green Mapper",
@@ -1211,7 +1211,7 @@ const App: React.FC = () => {
           );
 
           record.primaryValue = `S: ${calculatedKMLMetrics.effectiveDistances.scratch.toFixed(1)}${units === 'Yards' ? 'yd' : 'm'} / B: ${calculatedKMLMetrics.effectiveDistances.bogey.toFixed(1)}${units === 'Yards' ? 'yd' : 'm'}`;
-          record.secondaryValue = `Elev: S: ${calculatedKMLMetrics.effectiveElevations.scratch.toFixed(1)}${units === 'Yards' ? 'ft' : 'm'}`;
+          record.secondaryValue = `Elev: S: ${calculatedKMLMetrics.effectiveElevations.scratch.toFixed(1)}${units === 'Yards' ? 'ft' : 'm'} / B: ${calculatedKMLMetrics.effectiveElevations.bogey.toFixed(1)}${units === 'Yards' ? 'ft' : 'm'}`;
           record.genderRated = 'Men'; // Default for imported tracks, no way to know from KML
           record.effectiveDistances = calculatedKMLMetrics.effectiveDistances;
           record.effectiveElevations = calculatedKMLMetrics.effectiveElevations;
@@ -1755,7 +1755,7 @@ const App: React.FC = () => {
                           }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-bold text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
                           {trkActive && (
                             <div className="flex-[1.2] flex gap-2">
-                              <button onClick={() => setShowPivotMenu(true)} disabled={currentPivots.length >= 3} className="flex-1 h-14 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
+                              <button onClick={() => setShowPivotMenu(true)} disabled={currentPivots.length >= 6} className="flex-1 h-14 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
                               {currentPivots.length > 0 && <button onClick={() => {
                                 setCurrentPivots(prev => prev.slice(0, -1));
                                 setTrkPoints(prev => { // Also remove the last point if it was a pivot
