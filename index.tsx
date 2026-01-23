@@ -106,7 +106,29 @@ const USER_MANUAL = [
     title: "Distance Tracker",
     color: "text-blue-400",
     icon: <Navigation2 className="text-blue-400" />,
-    content: "Tap 'Start' when you are ready to start tracking the distance. Use 'Pivot' (max 6) at dog-leg corners to measure the true path of the hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other."
+    content: (
+      <>
+<p>This menu calculates distances and altitude change from tee to each landing zone for Scratch and Bogey players (the players). In addition, it displays the effective playing length of dogleg holes.</p>
+
+<p>On the home screen you can select whether you will be rating for Men or Women. This selection has no impact on the results, but will mark the generated hole track files for archiving and re-loading.</p>
+
+<p>Stand on the tee you are using to measure from and Tap 'Start Track' when you are ready to start tracking the distance.</p>
+
+<p>Horizontal and vertical distances are displayed in real-time. If you made a mistake and began at the wrong place, select “Stop Track” to start over.</p>
+
+<p>Two distances are shown S: for scratch and B: for bogey. The two will only differ if the line that each takes on a hole are different. On dogleg holes, a scratch golfer may be able to cut the corner, so their pivot point will be different to the bogey player.</p>
+
+<p>When you reach the first pivot, select ‘pivot’ and choose which (or both) players it refers to. If it does not apply to both, then from this point you will see two track lines and distances – one through the pivot and the other in a straight line from the tee. As you progress down the hole you can select pivots for each player.</p>
+
+<p>Both players’ tracks will end at the front of the green when you hit “Stop Track” and you can note down the two distances and the level difference between tee and green.</p>
+
+<p>As soon as you press “Stop Track” no more lines will be drawn, the location pin will continue to follow you and the track record for that hole will appear at the bottom of the Home screen for export or review.</p>
+
+<p>Notes: You can create a maximum of 3 pivots for each player on each hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz. value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other.</p>
+
+<p>If your device does not have a barometer sensor (see the elevation method displayed below the elevation value), then you may still need to use a barometer. Refer to section on “Sensor Diagnostics”, below for details.</p>
+      </>
+    ) 
   },
   {
     title: "Green Mapper",
@@ -134,8 +156,8 @@ const USER_MANUAL = [
   },
   {
     title: "Sensor Diagnostics",
-    color: "text-blue-400",
-    icon: <Cpu className="text-blue-400" />,
+    color: "text-rose-700",
+    icon: <Cpu className="text-rose-700" />,
     content: (
       <>
         GPS alone isn't accurate enough for determining altitude changes, but if your mobile device contains a barometer sensor this App should use it by default. If it does exist it will indicate its use as follows... <span className="text-blue-500 font-black">Blue Light</span> (Barometric): Highest precision elevation using your phone's pressure sensor (if it has one). <span className="text-emerald-500 font-black">Emerald Light</span> (GNSS 3D): Standard GPS altitude. <span className="text-amber-500 font-black">Amber Light</span>: Searching for vertical lock.
