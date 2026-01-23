@@ -34,8 +34,6 @@ import {
 type AppView = 'landing' | 'track' | 'green' | 'manual' | 'stimp';
 type UnitSystem = 'Yards' | 'Metres';
 type FontSize = 'small' | 'medium' | 'large';
-type RatingGender = 'Men' | 'Women'; // New type for gender selection
-type TrackProfileView = 'Rater\'s Walk' | 'Scratch' | 'Bogey'; // New type for track record viewing
 
 interface GeoPoint {
   lat: number;
@@ -47,39 +45,16 @@ interface GeoPoint {
   type?: 'green' | 'bunker';
 }
 
-// New interface for pivot records with type information
-interface PivotRecord {
-  point: GeoPoint;
-  type: 'common' | 'scratch_cut' | 'bogey_round';
-}
-
 interface SavedRecord {
   id: string;
   type: 'Track' | 'Green';
   date: number;
-  primaryValue: string; // For Track: "S: 380yd / B: 405yd", for Green: "Area"
-  secondaryValue?: string; // For Track: "Elev: S: 10ft / B: 12ft", for Green: "Bunker %"
-  egdValue?: string; // Only for Green type
-  points: GeoPoint[]; // For Green: green perimeter points, For Track: Rater's physical path
-  pivots?: GeoPoint[]; // Deprecated for Track, use pivotPoints
+  primaryValue: string;
+  secondaryValue?: string;
+  egdValue?: string;
+  points: GeoPoint[];
+  pivots?: GeoPoint[];
   holeNumber?: number;
-
-  // Track-specific fields (new for multi-profile)
-  raterPathPoints?: GeoPoint[]; // The full physical GPS trace of the rater (replaces `points` for 'Track' type)
-  pivotPoints?: PivotRecord[]; // Explicitly typed pivots for 'Track' type
-  genderRated?: RatingGender; // The selected gender for the rating
-  effectivePaths?: { // The calculated effective paths for each profile
-    scratch: GeoPoint[];
-    bogey: GeoPoint[];
-  };
-  effectiveDistances?: { // The final calculated total distances
-    scratch: number;
-    bogey: number;
-  };
-  effectiveElevations?: { // The final calculated total elevations
-    scratch: number; // Changed to number
-    bogey: number; // Changed to number
-  };
 }
 
 /** --- DOCUMENTATION CONTENT --- **/
@@ -106,7 +81,7 @@ const USER_MANUAL = [
     title: "Distance Tracker",
     color: "text-blue-400",
     icon: <Navigation2 className="text-blue-400" />,
-    content: "Tap 'Start' when you are ready to start tracking the distance. Use 'Pivot' (max 3) at dog-leg corners to measure the true path of the hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other."
+    content: "Tap 'Start' when you are ready to start tracking the distance. Use 'Pivot' (max 6) at dog-leg corners to measure the true path of the hole. Total distance and elevation change are calculated from the start through all pivots to your current position. GNSS (GPS) is really only accurate to 2m at best, so keep an eye on the Horiz value and the indicative coloured circle around the current location. It shows you the absolute positioning accuracy of the GPS, however, don't confuse this with the accuracy of distance measurements. They will always be better than this as they are relative to each other."
   },
   {
     title: "Green Mapper",
@@ -165,26 +140,6 @@ const calculateDistance = (p1: {lat: number, lng: number}, p2: {lat: number, lng
   const Δλ = (p2.lng - p1.lng) * Math.PI / 180;
   const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-const calculatePathDistanceAndElevation = (path: GeoPoint[], distMult: number, elevMult: number) => {
-  let distance = 0;
-  let netElevation = 0;
-
-  if (path.length > 1) {
-    for (let k = 0; k < path.length - 1; k++) {
-      const p1 = path[k];
-      const p2 = path[k+1];
-      distance += calculateDistance(p1, p2);
-    }
-    const startAlt = path[0]?.alt || 0;
-    const endAlt = path[path.length - 1]?.alt || 0;
-    netElevation = (endAlt - startAlt); // Raw elevation difference
-  }
-  return {
-    distance: distance * distMult,
-    elevation: netElevation * elevMult,
-  };
 };
 
 const calculateArea = (points: GeoPoint[]): number => {
@@ -539,159 +494,6 @@ const analyzeGreenShape = (points: GeoPoint[], concavityThreshold: number = 0.82
   return { ...basic, isLShape: false, hasAnomaly: false, s1: null, s2: null };
 };
 
-
-// --- NEW UTILITY: Generate interpolated line points ---
-const getInterpolatedLine = (p1: GeoPoint, p2: GeoPoint, numSegments: number = 5): GeoPoint[] => {
-  const points: GeoPoint[] = [p1];
-  if (p1.timestamp === p2.timestamp) return points; // Handle same point
-
-  for (let i = 1; i < numSegments; i++) {
-    const t = i / numSegments;
-    points.push({
-      lat: p1.lat + (p2.lat - p1.lat) * t,
-      lng: p1.lng + (p2.lng - p1.lng) * t,
-      alt: p1.alt !== null && p2.alt !== null ? p1.alt + (p2.alt - p1.alt) * t : null,
-      accuracy: (p1.accuracy + p2.accuracy) / 2, // Simple average
-      altAccuracy: p1.altAccuracy !== null && p2.altAccuracy !== null ? (p1.altAccuracy + p2.altAccuracy) / 2 : null,
-      timestamp: p1.timestamp + (p2.timestamp - p1.timestamp) * t // Interpolate timestamp too
-    });
-  }
-  points.push(p2);
-  return points;
-};
-
-
-// --- NEW UTILITY: Calculate Effective Paths and Metrics ---
-const calculateEffectivePathsAndMetrics = (
-  raterPathPoints: GeoPoint[],
-  pivotRecords: PivotRecord[],
-  distMult: number,
-  elevMult: number
-) => {
-  if (raterPathPoints.length < 2) {
-    return {
-      effectivePaths: { scratch: [], bogey: [] },
-      effectiveDistances: { scratch: 0, bogey: 0 },
-      effectiveElevations: { scratch: 0, bogey: 0 }, // Updated structure
-    };
-  }
-
-  const sortedPivots = [...pivotRecords].sort((a, b) => a.point.timestamp - b.point.timestamp);
-  const startPoint = raterPathPoints[0];
-  const endPoint = raterPathPoints[raterPathPoints.length - 1];
-
-  // --- 1. Determine effective anchors for each path ---
-  const getAnchors = (forScratch: boolean): GeoPoint[] => {
-    let anchors: GeoPoint[] = [startPoint];
-    for (const pivot of sortedPivots) {
-      if (forScratch) {
-        if (pivot.type === 'common' || pivot.type === 'scratch_cut') {
-          anchors.push(pivot.point);
-        }
-        // 'bogey_round' pivots are effectively skipped/bypassed for scratch, so not added as anchors
-      } else { // for Bogey
-        if (pivot.type === 'common' || pivot.type === 'bogey_round') {
-          anchors.push(pivot.point);
-        }
-        // 'scratch_cut' pivots are effectively skipped/bypassed for bogey, so not added as anchors
-      }
-    }
-    // Add endpoint if not already the last anchor
-    if (anchors[anchors.length - 1].timestamp !== endPoint.timestamp) {
-      anchors.push(endPoint);
-    }
-    // Deduplicate and sort by timestamp
-    return Array.from(new Map(anchors.map(p => [p.timestamp, p])).values()).sort((a, b) => a.timestamp - b.timestamp);
-  };
-
-  const scratchAnchors = getAnchors(true);
-  const bogeyAnchors = getAnchors(false);
-
-  // --- 2. Build the full path for each profile based on anchors ---
-  const buildFinalPath = (anchors: GeoPoint[], isScratchPath: boolean): GeoPoint[] => {
-    const path: GeoPoint[] = [];
-    if (anchors.length === 0) return [];
-    path.push(anchors[0]); // Add the starting anchor
-
-    for (let i = 0; i < anchors.length - 1; i++) {
-      const p1 = anchors[i];
-      const p2 = anchors[i+1];
-
-      // Determine if this segment should be straight or follow the rater's physical path
-      let shouldBeStraight = false;
-
-      // Find the actual indices of p1 and p2 in the full raterPathPoints
-      const p1IndexInRaterPath = raterPathPoints.findIndex(rp => rp.timestamp === p1.timestamp);
-      const p2IndexInRaterPath = raterPathPoints.findIndex(rp => rp.timestamp === p2.timestamp);
-
-      // If the segment in raterPathPoints is non-existent or invalid, assume straight connection
-      if (p1IndexInRaterPath === -1 || p2IndexInRaterPath === -1 || p1IndexInRaterPath >= p2IndexInRaterPath) {
-        shouldBeStraight = true; // Fallback for edge cases or non-contiguous segments
-      } else {
-        // Check for skipped pivots *between* p1 and p2 in the rater's actual path
-        // Points strictly between p1 and p2 (exclusive of p1 and p2 themselves)
-        const segmentInRaterPath = raterPathPoints.slice(p1IndexInRaterPath + 1, p2IndexInRaterPath); 
-
-        if (isScratchPath) {
-          // Scratch path is straight if p2 is a 'scratch_cut' pivot,
-          // OR if it's skipping any 'bogey_round' pivot *between* p1 and p2
-          const p2IsScratchCutPivot = sortedPivots.some(p => p.point.timestamp === p2.timestamp && p.type === 'scratch_cut');
-          const skippedBogeyRoundPivots = sortedPivots.filter(
-            p => p.type === 'bogey_round' && segmentInRaterPath.some(rp => rp.timestamp === p.point.timestamp)
-          );
-          if (p2IsScratchCutPivot || skippedBogeyRoundPivots.length > 0) {
-            shouldBeStraight = true;
-          }
-        } else { // Bogey path
-          // Bogey path is straight if it's skipping any 'scratch_cut' pivot *between* p1 and p2
-          const skippedScratchCutPivots = sortedPivots.filter(
-            p => p.type === 'scratch_cut' && segmentInRaterPath.some(rp => rp.timestamp === p.point.timestamp)
-          );
-          if (skippedScratchCutPivots.length > 0) {
-            shouldBeStraight = true;
-          }
-          // Note: Bogey path follows rater path for 'common' or 'bogey_round' pivots.
-          // This implicitly means it's NOT straight unless one of the conditions above forces it.
-        }
-      }
-      
-      if (shouldBeStraight) {
-        path.push(...getInterpolatedLine(p1, p2, 10).slice(1));
-      } else {
-        // Extract actual rater path points between p1 and p2 (inclusive of p2, exclusive of p1)
-        if (p1IndexInRaterPath !== -1 && p2IndexInRaterPath !== -1 && p1IndexInRaterPath < p2IndexInRaterPath) {
-          path.push(...raterPathPoints.slice(p1IndexInRaterPath + 1, p2IndexInRaterPath + 1));
-        } else { // Fallback, unlikely if anchors are from raterPathPoints and not straight
-          path.push(...getInterpolatedLine(p1, p2, 10).slice(1));
-        }
-      }
-    }
-    return path;
-  };
-
-  const finalScratchPath = buildFinalPath(scratchAnchors, true);
-  const finalBogeyPath = buildFinalPath(bogeyAnchors, false);
-
-  // --- 3. Calculate metrics for each path ---
-  const scratchMetrics = calculatePathDistanceAndElevation(finalScratchPath, distMult, elevMult);
-  const bogeyMetrics = calculatePathDistanceAndElevation(finalBogeyPath, distMult, elevMult);
-
-  return {
-    effectivePaths: {
-      scratch: finalScratchPath,
-      bogey: finalBogeyPath,
-    },
-    effectiveDistances: {
-      scratch: scratchMetrics.distance,
-      bogey: bogeyMetrics.distance,
-    },
-    effectiveElevations: {
-      scratch: scratchMetrics.elevation, // Separate net elevation for each path
-      bogey: bogeyMetrics.elevation,   // Separate net elevation for each path
-    },
-  };
-};
-
 const MapController: React.FC<{ 
   pos: GeoPoint | null, active: boolean, mapPoints: GeoPoint[], completed: boolean, viewingRecord: SavedRecord | null, mode: AppView
 }> = ({ pos, active, mapPoints, completed, viewingRecord, mode }) => {
@@ -717,7 +519,7 @@ const MapController: React.FC<{
     if (isUserInteracting.current) return;
 
     if (viewingRecord) {
-      const pts = viewingRecord.type === 'Green' ? viewingRecord.points : viewingRecord.raterPathPoints; // Prefer raterPathPoints for track type
+      const pts = viewingRecord.points;
       if (pts && pts.length > 0) {
         const bounds = L.latLngBounds(pts.map(p => [p.lat, p.lng]));
         map.fitBounds(bounds, { padding: [40, 40], paddingBottomRight: [40, 240], animate: true });
@@ -920,20 +722,20 @@ const StimpCalculator: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <button 
             onClick={calculate} 
             disabled={(sDownFt === 0 && sDownIn === 0) || (sUpFt === 0 && sUpIn === 0)}
-            className="w-full bg-blue-600 border-2 border-blue-500 rounded-full py-4 font-bold text-xs tracking-[0.2em] uppercase text-white shadow-xl shadow-blue-600/20 active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
+            className="w-full bg-blue-600 border-2 border-blue-500 rounded-full py-4 font-black text-xs tracking-[0.2em] uppercase text-white shadow-xl shadow-blue-600/20 active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
           >
             Calculate Speed
           </button>
 
           {result !== null && (
             <div ref={resultRef} className="bg-white/[0.04] border border-blue-500/30 rounded-[1.8rem] p-6 flex flex-col items-start animate-in zoom-in-95 duration-300">
-              <span className="text-[9px] font-bold text-blue-400 uppercase tracking-[0.3em] mb-2 w-full text-left">Corrected Green Speed</span>
-              <div className="text-5xl font-bold text-white tabular-nums leading-none mb-1 flex items-center justify-between w-full">
+              <span className="text-[9px] font-black text-blue-400 uppercase tracking-[0.3em] mb-2 w-full text-left">Corrected Green Speed</span>
+              <div className="text-5xl font-black text-white tabular-nums leading-none mb-1 flex items-center justify-between w-full">
                 <span className="text-left">{formatResult(result)}</span>
                 {slopeCat && (
                   <div className="flex flex-col items-center">
                     <span className="text-2xl text-yellow-400 bg-yellow-400/10 px-3 py-1 rounded-xl border border-yellow-400/20 tabular-nums">({slopeCat})</span>
-                    {slopeSub && <span className="text-[14px] font-bold text-yellow-500 uppercase mt-1 tracking-widest">{slopeSub}</span>}
+                    {slopeSub && <span className="text-[14px] font-black text-yellow-500 uppercase mt-1 tracking-widest">{slopeSub}</span>}
                   </div>
                 )}
               </div>
@@ -955,22 +757,14 @@ const App: React.FC = () => {
   const [units, setUnits] = useState<UnitSystem>('Yards');
   const [mapStyle, setMapStyle] = useState<'Street' | 'Satellite'>('Satellite');
   const [pos, setPos] = useState<GeoPoint | null>(null);
-  const [history, setHistory] = useState<SavedRecord[]>([]
-);
+  const [history, setHistory] = useState<SavedRecord[]>([]);
   const [viewingRecord, setViewingRecord] = useState<SavedRecord | null>(null);
-  const [viewingTrackProfile, setViewingTrackProfile] = useState<TrackProfileView>('Rater\'s Walk'); // New state for track record viewing
 
   const [trkActive, setTrkActive] = useState(false);
-  const [trkPoints, setTrkPoints] = useState<GeoPoint[]>([]); // Rater's actual physical path
-  const [trkPivotsArray, setTrkPivotsArray] = useState<GeoPoint[]>([]); // Old simple pivots
-  const [currentPivots, setCurrentPivots] = useState<PivotRecord[]>([]); // New, typed pivots
+  const [trkPoints, setTrkPoints] = useState<GeoPoint[]>([]);
+  const [trkPivotsArray, setTrkPivotsArray] = useState<GeoPoint[]>([]);
   const [holeNum, setHoleNum] = useState(1);
-  const [ratingGender, setRatingGender] = useState<RatingGender>('Men'); // New state for gender selection
   
-  // States for the new pivot selection menu
-  const [showPivotMenu, setShowPivotMenu] = useState(false);
-  const [pendingPivotType, setPendingPivotType] = useState<PivotRecord['type'] | null>(null);
-
   const [mapActive, setMapActive] = useState(false);
   const [mapCompleted, setMapCompleted] = useState(false);
   const [mapPoints, setMapPoints] = useState<GeoPoint[]>([]);
@@ -1047,7 +841,7 @@ const App: React.FC = () => {
       primaryValue: `${areaVal}${units === 'Yards' ? 'yd²' : 'm²'}`, 
       secondaryValue: `Bunker: ${analysis?.bunkerPct}%`, 
       egdValue: egdStr,
-      points: mapPoints, // For Green, 'points' is the perimeter
+      points: mapPoints,
       holeNumber: holeNum 
     });
     setMapActive(false); setMapCompleted(true);
@@ -1064,59 +858,42 @@ const App: React.FC = () => {
     }
   }, [pos, mapActive, isBunker, mapPoints.length, handleFinalizeGreen]);
 
+  const trkMetrics = useMemo(() => {
+    if (!trkActive && !viewingRecord && trkPoints.length < 2) return { dist: 0, elev: 0 };
+    if (viewingRecord && viewingRecord.type === 'Track') {
+       let d = 0;
+       for (let i = 0; i < viewingRecord.points.length - 1; i++) {
+         d += calculateDistance(viewingRecord.points[i], viewingRecord.points[i+1]);
+       }
+       const startAlt = viewingRecord.points[0]?.alt || 0;
+       const endAlt = viewingRecord.points[viewingRecord.points.length-1]?.alt || 0;
+       return { dist: d, elev: endAlt - startAlt };
+    }
+    
+    // In active mode or post-stop mode (where trkPoints contains path)
+    if (trkPoints.length < 1 && !pos) return { dist: 0, elev: 0 };
+    
+    let d = 0;
+    // Calculate distance through all stored points (Start + Pivots)
+    if (trkPoints.length > 1) {
+      for (let i = 0; i < trkPoints.length - 1; i++) {
+        d += calculateDistance(trkPoints[i], trkPoints[i+1]);
+      }
+    }
+    
+    const lastAnchor = trkPoints[trkPoints.length - 1];
+    // While tracking, dynamically add distance to current position
+    if (trkActive && pos && lastAnchor) {
+      d += calculateDistance(lastAnchor, pos);
+    }
+    
+    const startAlt = trkPoints[0]?.alt || pos?.alt || 0;
+    const currAlt = (trkActive && pos) ? (pos.alt || 0) : (trkPoints.length > 0 ? (trkPoints[trkPoints.length-1].alt || 0) : 0);
+    return { dist: d, elev: currAlt - startAlt };
+  }, [trkPoints, trkActive, pos, viewingRecord]);
+
   const distMult = units === 'Yards' ? 1.09361 : 1.0;
   const elevMult = units === 'Yards' ? 3.28084 : 1.0;
-
-  // Memoized calculation of effective paths and metrics
-  const effectiveMetrics = useMemo(() => {
-    // If viewing a saved record, use its stored effective data
-    if (viewingRecord && viewingRecord.type === 'Track' && viewingRecord.effectiveDistances && viewingRecord.effectiveElevations && viewingRecord.effectivePaths) {
-      // Calculate raw rater's path distance and elevation for "Rater's Walk" option
-      const raterPathMetrics = calculatePathDistanceAndElevation(viewingRecord.raterPathPoints || [], distMult, elevMult);
-
-      return {
-        distRater: raterPathMetrics.distance,
-        elevRater: raterPathMetrics.elevation,
-        distScratch: viewingRecord.effectiveDistances.scratch,
-        elevScratch: viewingRecord.effectiveElevations.scratch,
-        distBogey: viewingRecord.effectiveDistances.bogey,
-        elevBogey: viewingRecord.effectiveElevations.bogey,
-        effectivePaths: viewingRecord.effectivePaths,
-      };
-    }
-
-    // If actively tracking or just stopped, calculate based on current data
-    const currentRaterPath = [...trkPoints, ...(trkActive && pos ? [pos] : [])].filter(Boolean) as GeoPoint[];
-    if (currentRaterPath.length < 2) {
-      return {
-        distRater: 0, elevRater: 0,
-        distScratch: 0, elevScratch: 0,
-        distBogey: 0, elevBogey: 0,
-        effectivePaths: { scratch: [], bogey: [] }
-      };
-    }
-
-    const calculated = calculateEffectivePathsAndMetrics(
-      currentRaterPath,
-      currentPivots,
-      distMult,
-      elevMult
-    );
-
-    // Also calculate raw rater's path distance and elevation for active tracking
-    const raterPathMetrics = calculatePathDistanceAndElevation(currentRaterPath, distMult, elevMult);
-
-    return {
-      distRater: raterPathMetrics.distance,
-      elevRater: raterPathMetrics.elevation,
-      distScratch: calculated.effectiveDistances.scratch,
-      elevScratch: calculated.effectiveElevations.scratch,
-      distBogey: calculated.effectiveDistances.bogey,
-      elevBogey: calculated.effectiveElevations.bogey,
-      effectivePaths: calculated.effectivePaths,
-    };
-  }, [trkPoints, currentPivots, trkActive, pos, viewingRecord, distMult, elevMult]);
-
 
   const exportKML = () => {
     let kml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1124,11 +901,11 @@ const App: React.FC = () => {
   <Document>
     <name>Scottish Golf Export</name>`;
     history.forEach(item => {
-      const coords = (item.type === 'Track' && item.raterPathPoints ? item.raterPathPoints : item.points).map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
+      const coords = item.points.map(p => `${p.lng},${p.lat},${p.alt || 0}`).join(' ');
       kml += `
     <Placemark>
       <name>${item.type} - Hole ${item.holeNumber || '?'}</name>
-      <description>Hole:${item.holeNumber || '?'}${item.type === 'Track' && item.genderRated ? ` - Gender: ${item.genderRated}` : ''}</description>
+      <description>Hole:${item.holeNumber || '?'}</description>
       ${item.type === 'Green' ? `
       <Polygon><outerBoundaryIs><LinearRing><coordinates>${coords} ${item.points[0].lng},${item.points[0].lat},${item.points[0].alt || 0}</coordinates></LinearRing></outerBoundaryIs></Polygon>` : `
       <LineString><coordinates>${coords}</LineString></LineString>`}
@@ -1183,8 +960,7 @@ const App: React.FC = () => {
           id: Math.random().toString(36).substr(2, 9),
           date: Date.now() - (i * 1000),
           type: isActuallyGreen ? 'Green' : 'Track',
-          points: points, // Always store in 'points' to satisfy interface
-          raterPathPoints: isActuallyGreen ? undefined : points, // Store in 'raterPathPoints' for Track type
+          points,
           primaryValue: 'Imported',
           secondaryValue: 'KML Data',
           holeNumber: extractedHole > 0 ? extractedHole : undefined
@@ -1201,21 +977,10 @@ const App: React.FC = () => {
           }
           record.secondaryValue = `Bunker: ${analysis?.bunkerPct}%`;
         } else {
-          // For imported KML tracks, we don't have pivot data, so effective paths will be same as raterPathPoints
-          const importedRaterPath = points;
-          const calculatedKMLMetrics = calculateEffectivePathsAndMetrics(
-            importedRaterPath,
-            [], // No pivots from KML import directly
-            distMult,
-            elevMult
-          );
-
-          record.primaryValue = `S: ${calculatedKMLMetrics.effectiveDistances.scratch.toFixed(1)}${units === 'Yards' ? 'yd' : 'm'} / B: ${calculatedKMLMetrics.effectiveDistances.bogey.toFixed(1)}${units === 'Yards' ? 'yd' : 'm'}`;
-          record.secondaryValue = `Elev: S: ${calculatedKMLMetrics.effectiveElevations.scratch.toFixed(1)}${units === 'Yards' ? 'ft' : 'm'}`;
-          record.genderRated = 'Men'; // Default for imported tracks, no way to know from KML
-          record.effectiveDistances = calculatedKMLMetrics.effectiveDistances;
-          record.effectiveElevations = calculatedKMLMetrics.effectiveElevations;
-          record.effectivePaths = calculatedKMLMetrics.effectivePaths;
+          let totalDist = 0;
+          for (let k = 0; k < points.length - 1; k++) totalDist += calculateDistance(points[k], points[k+1]);
+          record.primaryValue = `${(totalDist * distMult).toFixed(1)}${units === 'Yards' ? 'yd' : 'm'}`;
+          record.secondaryValue = `Elev: 0.0${units === 'Yards' ? 'ft' : 'm'}`;
         }
         newItems.push(record);
       }
@@ -1235,37 +1000,11 @@ const App: React.FC = () => {
     if (record.type === 'Track') {
       setView('track');
       setTrkActive(false);
-      setTrkPoints([]); // Clear current tracking points
-      setCurrentPivots([]); // Clear current pivots
-      setViewingTrackProfile('Rater\'s Walk'); // Reset to default view for saved tracks
-      if (record.genderRated) setRatingGender(record.genderRated); // Set gender for viewing
+      setTrkPoints([]);
     } else {
       setView('green');
       setMapActive(false);
       setMapCompleted(true);
-    }
-  };
-
-  const handleConfirmPivot = useCallback(() => {
-    if (pos && pendingPivotType) {
-      setCurrentPivots(prev => [...prev, { point: pos, type: pendingPivotType }]);
-      setTrkPoints(prev => [...prev, pos]);
-      setPendingPivotType(null);
-      setShowPivotMenu(false);
-    }
-  }, [pos, pendingPivotType]);
-
-  const handleCancelPivot = useCallback(() => {
-    setPendingPivotType(null);
-    setShowPivotMenu(false);
-  }, []);
-
-  const getPivotColor = (pivotType: PivotRecord['type']): string => {
-    switch (pivotType) {
-      case 'common': return '#3b82f6'; // Blue
-      case 'scratch_cut': return '#10b981'; // Emerald
-      case 'bogey_round': return '#facc15'; // Yellow
-      default: return '#fff';
     }
   };
 
@@ -1276,60 +1015,40 @@ const App: React.FC = () => {
       {view === 'landing' ? (
         <div className="flex-1 flex flex-col p-6 overflow-y-auto no-scrollbar animate-in fade-in duration-700">
           <header className="mb-12 mt-8 flex flex-col items-center text-center">
-            <h1 className="text-5xl tracking-tighter font-bold text-blue-500">Scottish Golf</h1>
+            <h1 className="text-5xl tracking-tighter font-semibold text-blue-500">Scottish Golf</h1>
             <p className="text-white text-[11px] font-bold tracking-[0.4em] uppercase mt-2 opacity-80">Course Rating Toolkit (ALPHA)</p>
           </header>
 
           <div className="flex flex-col gap-6">
-            <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setCurrentPivots([]); setView('track'); setShowPivotMenu(false); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
+            <button onClick={() => { setViewingRecord(null); setTrkPoints([]); setTrkPivotsArray([]); setView('track'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-600/40"><Navigation2 size={28} /></div>
-              <h2 className="text-2xl font-bold mb-2 uppercase text-blue-500">Distance tracker</h2>
+              <h2 className="text-2xl font-black mb-2 uppercase text-blue-500">Distance tracker</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Real-time distance measurement and elevation change</p>
             </button>
-            
-            {/* New Gender Selection Toggle */}
-            <div className="bg-slate-900/50 border border-white/5 rounded-[1.8rem] py-4 px-6 flex justify-around items-center shadow-lg">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Rating For:</span>
-                <div className="flex bg-slate-800 rounded-full p-1 border border-white/10">
-                    <button 
-                        onClick={() => setRatingGender('Men')}
-                        className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${ratingGender === 'Men' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
-                    >
-                        Men
-                    </button>
-                    <button 
-                        onClick={() => setRatingGender('Women')}
-                        className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${ratingGender === 'Women' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}
-                    >
-                        Women
-                    </button>
-                </div>
-            </div>
-
             <button onClick={() => { setViewingRecord(null); setMapPoints([]); setMapCompleted(false); setView('green'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-600/40"><Target size={28} /></div>
-              <h2 className="text-2xl font-bold mb-2 uppercase text-emerald-500">Green Mapper</h2>
+              <h2 className="text-2xl font-black mb-2 uppercase text-emerald-500">Green Mapper</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Green mapping, bunker proportion and Effective Green Diameter calculation</p>
             </button>
             <button onClick={() => { setViewingRecord(null); setView('stimp'); }} className="bg-slate-900 border border-white/5 rounded-[2.5rem] p-10 flex flex-col items-center justify-center shadow-2xl active:bg-slate-800 active:scale-95 transition-all">
               <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 shadow-xl shadow-blue-500/10 border border-blue-500/20"><Gauge size={28} className="text-blue-500" /></div>
-              <h2 className="text-2xl font-bold mb-2 uppercase text-blue-400">Stimp Slopes</h2>
+              <h2 className="text-2xl font-black mb-2 uppercase text-blue-400">Stimp Slopes</h2>
               <p className="text-slate-400 text-[11px] font-medium text-center max-w-[220px] leading-relaxed">Speed correction for sloping greens</p>
             </button>
 
             <button onClick={() => setView('manual')} className="mt-2 bg-slate-800/50 border border-white/10 rounded-[1.8rem] py-6 flex items-center justify-center gap-4 active:bg-slate-700 transition-colors">
               <BookOpen size={20} className="text-blue-400" />
-              <span className="text-[11px] font-bold uppercase tracking-widest text-white">User Manual</span>
+              <span className="text-[11px] font-black uppercase tracking-widest text-white">User Manual</span>
             </button>
 
             <div className="flex gap-4 mt-2">
                <button onClick={exportKML} className="flex-1 bg-slate-800/50 border border-blue-500/20 rounded-[1.8rem] py-6 flex items-center justify-center gap-3 active:bg-slate-700 transition-colors shadow-lg">
                 <Download size={18} className="text-blue-500" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-white">Export KML</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-white">Export KML</span>
               </button>
               <label className="flex-1 bg-slate-800/50 border border-emerald-500/20 rounded-[1.8rem] py-6 flex items-center justify-center gap-3 active:bg-slate-700 transition-colors shadow-lg cursor-pointer">
                 <Upload size={18} className="text-emerald-500" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-white">Import KML</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-white">Import KML</span>
                 <input type="file" accept=".kml" onChange={importKML} className="hidden" />
               </label>
             </div>
@@ -1340,17 +1059,17 @@ const App: React.FC = () => {
               <div className="mb-6">
                 <div className="flex items-center gap-2 px-2 mb-4">
                   <Info size={12} className="text-blue-400" />
-                  <span className="text-[10px] font-bold tracking-[0.2em] text-slate-500 uppercase">Assessment History</span>
+                  <span className="text-[10px] font-black tracking-[0.2em] text-slate-500 uppercase">Assessment History</span>
                 </div>
                 <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
                   {history.map(item => (
                     <div key={item.id} className="relative shrink-0">
                       <button onClick={() => handleOpenRecord(item)} className="bg-slate-900 border border-white/10 px-6 py-5 rounded-[2rem] flex flex-col min-w-[170px] text-left shadow-lg active:scale-95 transition-transform">
                         <div className="flex justify-between items-start mb-1">
-                          <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">{item.type} {item.holeNumber && ` - Hole ${item.holeNumber}`}</span>
+                          <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{item.type} {item.holeNumber && ` - Hole ${item.holeNumber}`}</span>
                           {item.type === 'Green' ? <Target size={12} className="text-emerald-500/60" /> : <Navigation2 size={12} className="text-blue-500/60" />}
                         </div>
-                        <span className="text-xl font-bold text-white">{item.primaryValue}</span>
+                        <span className="text-xl font-black text-white">{item.primaryValue}</span>
                         <span className="text-[11px] font-bold text-slate-400 mt-1">{item.egdValue || item.secondaryValue}</span>
                       </button>
                       <button onClick={(e) => { e.stopPropagation(); setHistory(h => h.filter(x => x.id !== item.id)); }} className="absolute -top-2 -right-2 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center border-2 border-[#020617] text-white shadow-xl active:scale-90"><Trash2 size={12} /></button>
@@ -1368,14 +1087,14 @@ const App: React.FC = () => {
       ) : (
         <div className="flex-1 flex flex-col relative animate-in slide-in-from-right duration-300">
           <div className="absolute top-0 left-0 right-0 z-[1000] p-4 flex justify-between pointer-events-none">
-            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); setShowPivotMenu(false); setViewingTrackProfile('Rater\'s Walk'); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
+            <button onClick={() => { setView('landing'); setTrkActive(false); setMapActive(false); setViewingRecord(null); }} className="pointer-events-auto bg-slate-800 border border-white/20 px-5 py-3 rounded-full flex items-center gap-2 shadow-2xl active:scale-95 transition-all">
               <ChevronLeft size={18} className="text-emerald-400" />
               <span className="text-[11px] uppercase tracking-widest font-semibold text-blue-500">Home</span>
             </button>
             <div className="flex gap-2">
               {((view === 'track' && trkActive) || (view === 'green' && mapActive) || viewingRecord) && (
                 <div className="pointer-events-auto bg-slate-800 border border-white/20 w-[46px] h-[46px] rounded-full flex items-center justify-center shadow-2xl">
-                   <span className="text-xl font-bold text-blue-400 tabular-nums">{holeNum}</span>
+                   <span className="text-xl font-black text-blue-400 tabular-nums">{holeNum}</span>
                 </div>
               )}
               <button onClick={() => setUnits(u => u === 'Yards' ? 'Metres' : 'Yards')} className="pointer-events-auto bg-slate-800 border border-white/20 p-3.5 rounded-full text-emerald-400 shadow-2xl active:scale-90"><Ruler size={20} /></button>
@@ -1394,79 +1113,10 @@ const App: React.FC = () => {
                     <CircleMarker center={[pos.lat, pos.lng]} radius={7} pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2.5 }} />
                   </>
                 )}
-                {/* Rater's physical path (always shown if tracking, or if viewing a track and 'Rater's Walk' is selected) */}
-                {(view === 'track' && trkActive && (trkPoints.length > 0 || pos)) && (
-                  <Polyline 
-                    positions={[...trkPoints, ...(pos && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])].filter(Boolean).map(p => [p.lat, p.lng])} 
-                    color="#3b82f6" 
-                    weight={5} 
-                  />
+                {view === 'track' && (viewingRecord?.pivots || trkPivotsArray).map((p, i) => <CircleMarker key={i} center={[p.lat, p.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 1, weight: 2 }} />)}
+                {view === 'track' && (trkPoints.length > 0 || trkActive || viewingRecord) && (
+                  <Polyline positions={(viewingRecord ? viewingRecord.points : [...trkPoints, ...(pos && trkActive && (!trkPoints.length || calculateDistance(trkPoints[trkPoints.length-1], pos) > 0) ? [pos] : [])]).filter(Boolean).map(p => [p.lat, p.lng])} color="#3b82f6" weight={5} />
                 )}
-                {(view === 'track' && !trkActive && viewingRecord?.type === 'Track' && viewingRecord.raterPathPoints && viewingTrackProfile === 'Rater\'s Walk') && (
-                  <Polyline
-                    positions={viewingRecord.raterPathPoints.map(p => [p.lat, p.lng])}
-                    color="#3b82f6"
-                    weight={5}
-                  />
-                )}
-
-                {/* Effective Scratch Path (Active Tracking OR Viewing Saved Record and 'Scratch' selected) */}
-                {(view === 'track' && effectiveMetrics.effectivePaths.scratch.length > 1 &&
-                  (trkActive || (viewingRecord?.type === 'Track' && viewingTrackProfile === 'Scratch'))) && (
-                  <Polyline 
-                    positions={effectiveMetrics.effectivePaths.scratch.map(p => [p.lat, p.lng])} 
-                    color="#10b981" // Emerald for Scratch
-                    weight={4}
-                    dashArray="5, 5" // Dashed line to differentiate
-                  />
-                )}
-                {/* Effective Bogey Path (Active Tracking OR Viewing Saved Record and 'Bogey' selected) */}
-                {(view === 'track' && effectiveMetrics.effectivePaths.bogey.length > 1 &&
-                  (trkActive || (viewingRecord?.type === 'Track' && viewingTrackProfile === 'Bogey'))) && (
-                  <Polyline 
-                    positions={effectiveMetrics.effectivePaths.bogey.map(p => [p.lat, p.lng])} 
-                    color="#facc15" // Yellow for Bogey
-                    weight={4}
-                    dashArray="10, 5" // Different dashed pattern
-                  />
-                )}
-
-                {/* Pivot points */}
-                {view === 'track' && (
-                  <>
-                    {/* Pivots for active tracking */}
-                    {!viewingRecord && currentPivots.map((p, i) => (
-                      <CircleMarker key={`active-pivot-${i}`} center={[p.point.lat, p.point.lng]} radius={5} pathOptions={{ color: '#fff', fillColor: getPivotColor(p.type), fillOpacity: 1, weight: 2 }} />
-                    ))}
-                    {/* Pivots for viewing a saved record */}
-                    {viewingRecord?.type === 'Track' && viewingRecord.pivotPoints && viewingRecord.pivotPoints.map((p, i) => {
-                      let renderPivot = false;
-                      let fillColor = '#3b82f6'; // Default Rater's Walk pivot color
-                      let radius = 5;
-
-                      if (viewingTrackProfile === 'Rater\'s Walk') {
-                        renderPivot = true;
-                      } else if (viewingTrackProfile === 'Scratch') {
-                        if (p.type === 'common' || p.type === 'scratch_cut') {
-                          renderPivot = true;
-                          fillColor = '#10b981'; // Highlight for Scratch
-                          radius = 7; // Larger radius for highlight
-                        }
-                      } else if (viewingTrackProfile === 'Bogey') {
-                        if (p.type === 'common' || p.type === 'bogey_round') {
-                          renderPivot = true;
-                          fillColor = '#facc15'; // Highlight for Bogey
-                          radius = 7; // Larger radius for highlight
-                        }
-                      }
-                      return renderPivot ? (
-                        <CircleMarker key={`saved-pivot-${i}`} center={[p.point.lat, p.point.lng]} radius={radius} pathOptions={{ color: '#fff', fillColor: fillColor, fillOpacity: 1, weight: 2 }} />
-                      ) : null;
-                    })}
-                  </>
-                )}
-
-                {/* Green Mapping */}
                 {view === 'green' && (viewingRecord?.points || mapPoints).length > 1 && (
                   <>
                     <Polygon positions={(viewingRecord?.points || mapPoints).map(p => [p.lat, p.lng])} fillColor="#10b981" fillOpacity={0.1} weight={0} />
@@ -1540,60 +1190,33 @@ const App: React.FC = () => {
               <div className="pointer-events-auto bg-slate-900/95 border border-white/20 rounded-[2.8rem] px-6 py-3 w-full shadow-2xl backdrop-blur-md">
                 {view === 'track' ? (
                   <>
-                    {viewingRecord && viewingRecord.type === 'Track' && (
-                      <div className="mb-4">
-                        <label htmlFor="view-path-select" className="sr-only">View Path</label>
-                        <select
-                          id="view-path-select"
-                          className="w-full bg-slate-800 border border-white/10 rounded-full py-2 px-4 text-sm font-semibold text-white text-center appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          value={viewingTrackProfile}
-                          onChange={(e) => setViewingTrackProfile(e.target.value as TrackProfileView)}
-                        >
-                          <option value="Rater's Walk">View Path: Rater's Walk</option>
-                          <option value="Scratch">Scratch {viewingRecord.genderRated || 'Men'}</option>
-                          <option value="Bogey">Bogey {viewingRecord.genderRated || 'Men'}</option>
-                        </select>
-                      </div>
-                    )}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center flex flex-col items-center">
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2 leading-none">DISTANCE</span>
-                        <div className="flex flex-col gap-1"> {/* Changed to flex-col */}
-                            <div className="text-4xl font-bold text-emerald-400 tabular-nums leading-none tracking-tighter">
-                                S: {effectiveMetrics.distScratch.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
-                            </div>
-                            <div className="text-4xl font-bold text-yellow-400 tabular-nums leading-none tracking-tighter">
-                                B: {effectiveMetrics.distBogey.toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span>
-                            </div>
-                        </div>
+                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">{viewingRecord ? 'LOG DATA' : 'DISTANCE'}</span>
+                        <div className="text-4xl font-black text-emerald-400 tabular-nums leading-none tracking-tighter">{(trkMetrics.dist * distMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div>
                       </div>
                       <div className="text-center border-l border-white/10 flex flex-col items-center">
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
-                        <div className="flex-1 flex items-center justify-center"> {/* New wrapper for vertical centering */}
-                          <div className={`text-4xl font-bold tabular-nums leading-none tracking-tighter ${pos?.altAccuracy === null && pos?.alt === null ? 'text-rose-500' : 'text-yellow-400'}`}>
-                            {`${effectiveMetrics.elevRater > 0 ? '+' : ''}${effectiveMetrics.elevRater.toFixed(1)}`}
-                            <span className="text-[10px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span>
-                          </div>
-                        </div>
+                        <span className="text-[10px] font-black text-white/40 uppercase tracking-widest block mb-2 leading-none">ELEVATION</span>
+                        <div className={`text-4xl font-black tabular-nums leading-none tracking-tighter ${pos?.altAccuracy === null && pos?.alt === null ? 'text-rose-500' : 'text-yellow-400'}`}>{(trkMetrics.elev * elevMult).toFixed(1)}<span className="text-[10px] ml-1 opacity-40 uppercase">{units === 'Yards' ? 'FT' : 'M'}</span></div>
                       </div>
                     </div>
                     {pos && !viewingRecord && (
                       <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-4">
                         <div className="text-center flex flex-col items-center">
                           <div className="flex items-center justify-center gap-1">
-                            <span className={`text-[11px] font-bold tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
-                            <span className="text-[10px] text-white/70 font-bold uppercase">GNSS</span>
+                            <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                            <span className="text-[10px] text-white/70 font-black uppercase">GNSS</span>
                           </div>
                         </div>
                         <div className="text-center border-l border-white/10 flex flex-col items-center">
                           {pos.altAccuracy === null && pos.alt === null ? (
-                            <span className="text-[11px] font-bold tabular-nums text-red-500 animate-pulse">Searching...</span>
+                            <span className="text-[11px] font-black tabular-nums text-red-500 animate-pulse">Searching...</span>
                           ) : (
                             <div className="flex items-center justify-center gap-1">
-                              <span className={`text-[11px] font-bold tabular-nums ${getAccuracyTextColor(pos.altAccuracy !== null ? pos.altAccuracy : (pos.alt !== null ? 999 : 0))}`}>
+                              <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.altAccuracy !== null ? pos.altAccuracy : (pos.alt !== null ? 999 : 0))}`}>
                                 ±{(pos.altAccuracy !== null ? pos.altAccuracy : (pos.alt !== null ? 10 : 0)).toFixed(1)}m
                               </span>
-                              <span className="text-[10px] text-white/70 font-bold uppercase">{getVerticalMethod(pos.altAccuracy, pos.alt)}</span>
+                              <span className="text-[10px] text-white/70 font-black uppercase">{getVerticalMethod(pos.altAccuracy, pos.alt)}</span>
                             </div>
                           )}
                         </div>
@@ -1603,25 +1226,25 @@ const App: React.FC = () => {
                 ) : (
                   <>
                     <div className="grid grid-cols-3 gap-2 mb-2">
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-bold uppercase block mb-1 tracking-widest">Sq. Area</span><div className="text-2xl font-bold text-emerald-400 tabular-nums">{Math.round((analysis?.area || 0) * (units === 'Yards' ? 1.196 : 1))}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD²' : 'M²'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-bold uppercase block mb-1 tracking-widest">Perimeter</span><div className="text-2xl font-bold text-blue-400 tabular-nums">{((analysis?.perimeter || 0) * distMult).toFixed(1)}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div></div>
-                      <div className="text-center"><span className="text-white/40 text-[8px] font-bold uppercase block mb-1 tracking-widest">Bunker%</span><div className={`text-2xl font-bold ${getBunkerPercentageColor(analysis?.bunkerPct)} tabular-nums`}>{analysis?.bunkerPct || 0}%</div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Sq. Area</span><div className="text-2xl font-black text-emerald-400 tabular-nums">{Math.round((analysis?.area || 0) * (units === 'Yards' ? 1.196 : 1))}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD²' : 'M²'}</span></div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Perimeter</span><div className="text-2xl font-black text-blue-400 tabular-nums">{((analysis?.perimeter || 0) * distMult).toFixed(1)}<span className="text-[9px] ml-0.5 opacity-40 uppercase">{units === 'Yards' ? 'YD' : 'M'}</span></div></div>
+                      <div className="text-center"><span className="text-white/40 text-[8px] font-black uppercase block mb-1 tracking-widest">Bunker%</span><div className={`text-2xl font-black ${getBunkerPercentageColor(analysis?.bunkerPct)} tabular-nums`}>{analysis?.bunkerPct || 0}%</div></div>
                     </div>
                     {analysis?.shape && (
                       <div className="bg-white/[0.04] rounded-[2rem] px-5 py-2 border border-white/10 shadow-inner">
                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[8px] font-bold text-blue-400 uppercase tracking-[0.2em]">EGD: {analysis.shape.method}</span>
+                            <span className="text-[8px] font-black text-blue-400 uppercase tracking-[0.2em]">EGD: {analysis.shape.method}</span>
                             {analysis.shape.isLShape && analysis.shape.hasAnomaly && !(analysis.shape as any).anomalousResult && (
                               <div className="flex items-center gap-1.5 animate-pulse">
                                 <AlertCircle size={10} className="text-red-500" />
-                                <span className="text-[8px] font-bold text-red-500 uppercase tracking-widest">Anomaly</span>
+                                <span className="text-[8px] font-black text-red-500 uppercase tracking-widest">Anomaly</span>
                               </div>
                             )}
                          </div>
 
                          {(analysis.shape as any).anomalousResult ? (
                            <div className="flex flex-col items-center py-1">
-                              <div className="w-full flex justify-between px-2 text-[10px] font-bold">
+                              <div className="w-full flex justify-between px-2 text-[10px] font-black">
                                  <div className="flex items-center gap-1.5">
                                     <span className="text-slate-500 uppercase">L (Curved):</span>
                                     <span className="text-cyan-400 text-xl">{(analysis.shape as any).anomalousResult.curvedLength.toFixed(1)}</span>
@@ -1631,7 +1254,7 @@ const App: React.FC = () => {
                                     <span className="text-white/60 text-xl">{(analysis.shape as any).anomalousResult.straightLength.toFixed(1)}</span>
                                  </div>
                               </div>
-                              <div className="w-full flex justify-around px-2 mt-2 text-[11px] font-bold">
+                              <div className="w-full flex justify-around px-2 mt-2 text-[11px] font-black">
                                  <div className="flex items-center gap-1">
                                     <span className="text-slate-500 uppercase text-[8px]">W1:</span>
                                     <span className="text-xl" style={{ color: (analysis.shape as any).anomalousResult.widths[0]?.color }}>{(analysis.shape as any).anomalousResult.widths[0]?.w.toFixed(1)}</span>
@@ -1649,18 +1272,18 @@ const App: React.FC = () => {
                          ) : analysis.shape.isLShape ? (
                            <div className="flex items-center justify-around gap-2">
                              <div className="text-center border-r border-white/10 pr-6 flex flex-col items-center">
-                               <div className="text-4xl font-bold text-yellow-400 tabular-nums leading-none">{analysis.shape.s1?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
-                               <div className="text-[8px] font-bold text-yellow-500/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s1?.L.toFixed(1)} W:{analysis.shape.s1?.W.toFixed(1)}</div>
+                               <div className="text-4xl font-black text-yellow-400 tabular-nums leading-none">{analysis.shape.s1?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
+                               <div className="text-[8px] font-black text-yellow-500/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s1?.L.toFixed(1)} W:{analysis.shape.s1?.W.toFixed(1)}</div>
                              </div>
                              <div className="text-center pl-6 flex flex-col items-center">
-                               <div className="text-4xl font-bold text-orange-500 tabular-nums leading-none">{analysis.shape.s2?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
-                               <div className="text-[8px] font-bold text-orange-600/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s2?.L.toFixed(1)} W:{analysis.shape.s2?.W.toFixed(1)}</div>
+                               <div className="text-4xl font-black text-orange-500 tabular-nums leading-none">{analysis.shape.s2?.egd}<span className="text-[10px] ml-1 opacity-40 uppercase">YD</span></div>
+                               <div className="text-[8px] font-black text-orange-600/80 uppercase mt-1 tracking-widest leading-none">L:{analysis.shape.s2?.L.toFixed(1)} W:{analysis.shape.s2?.W.toFixed(1)}</div>
                              </div>
                            </div>
                          ) : (
                            <div className="text-center py-0.5 flex flex-col items-center">
-                             <div className="text-6xl font-bold text-yellow-400 tabular-nums leading-none">{analysis.shape.egd}<span className="text-base ml-1 opacity-40 uppercase">YD</span></div>
-                             <div className="text-[9px] text-white font-bold mt-1.5 uppercase tracking-widest">
+                             <div className="text-6xl font-black text-yellow-400 tabular-nums leading-none">{analysis.shape.egd}<span className="text-base ml-1 opacity-40 uppercase">YD</span></div>
+                             <div className="text-[9px] text-white font-black mt-1.5 uppercase tracking-widest">
                                <span className="text-cyan-400">LONGEST: {analysis.shape.L.toFixed(1)} YD</span> | 
                                <span className="text-yellow-400 ml-1">
                                  {analysis.shape.isInconsistent ? `SHORTEST: (${analysis.shape.w1_yds.toFixed(1)} + ${analysis.shape.w3_yds.toFixed(1)}) / 2` : `SHORTEST: ${analysis.shape.W.toFixed(1)} YD`}
@@ -1673,8 +1296,8 @@ const App: React.FC = () => {
                     {pos && !viewingRecord && (
                       <div className="mt-2 pt-2 border-t border-white/10 flex flex-col items-center">
                         <div className="flex items-center justify-center gap-1">
-                          <span className={`text-[11px] font-bold tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
-                          <span className="text-[10px] text-white/70 font-bold uppercase">GNSS</span>
+                          <span className={`text-[11px] font-black tabular-nums ${getAccuracyTextColor(pos.accuracy)}`}>±{pos.accuracy.toFixed(1)}m</span>
+                          <span className="text-[10px] text-white/70 font-black uppercase">GNSS</span>
                         </div>
                       </div>
                     )}
@@ -1683,7 +1306,7 @@ const App: React.FC = () => {
               </div>
               <div className="pointer-events-auto flex flex-col gap-2 w-full">
                 {viewingRecord ? (
-                  <button onClick={() => { setViewingRecord(null); setView('landing'); setViewingTrackProfile('Rater\'s Walk'); }} className="h-14 bg-slate-800 border-2 border-white/10 rounded-full font-bold text-xs tracking-[0.2em] uppercase text-white shadow-xl active:scale-95 transition-all">Close Viewer</button>
+                  <button onClick={() => { setViewingRecord(null); setView('landing'); }} className="h-14 bg-slate-800 border-2 border-white/10 rounded-full font-black text-xs tracking-[0.2em] uppercase text-white shadow-xl active:scale-95 transition-all">Close Viewer</button>
                 ) : (
                   <>
                     {view === 'track' ? (
@@ -1699,8 +1322,8 @@ const App: React.FC = () => {
                                   <Minus size={14} />
                                 </button>
                                 <div className="flex flex-col items-center">
-                                  <span className="text-[7px] font-bold uppercase tracking-widest text-white/40">HOLE</span>
-                                  <span className="text-xl font-bold tabular-nums text-blue-400 leading-none">{holeNum}</span>
+                                  <span className="text-[7px] font-black uppercase tracking-widest text-white/40">HOLE</span>
+                                  <span className="text-xl font-black tabular-nums text-blue-400 leading-none">{holeNum}</span>
                                 </div>
                                 <button 
                                   onClick={() => setHoleNum(h => Math.min(18, h + 1))}
@@ -1715,55 +1338,37 @@ const App: React.FC = () => {
                             if(!trkActive) { 
                               setTrkActive(true); 
                               setTrkPoints(pos ? [pos] : []); 
-                              // Reset currentPivots and close pivot menu when starting a new track
-                              setCurrentPivots([]); 
-                              setShowPivotMenu(false);
-                              setPendingPivotType(null);
+                              setTrkPivotsArray([]); 
                             } 
                             else { 
                               // Lock the final position into the path
-                              const finalRaterPath = [...trkPoints, pos].filter(Boolean) as GeoPoint[];
-                              setTrkPoints(finalRaterPath);
+                              const finalPath = [...trkPoints, pos].filter(Boolean) as GeoPoint[];
+                              setTrkPoints(finalPath);
                               
                               const unitSfx = units === 'Yards' ? 'yd' : 'm';
                               const elevSfx = units === 'Yards' ? 'ft' : 'm';
-                              
-                              const calculatedEffectiveMetrics = calculateEffectivePathsAndMetrics(
-                                finalRaterPath,
-                                currentPivots,
-                                distMult,
-                                elevMult
-                              );
-
                               saveRecord({ 
                                 type: 'Track', 
-                                primaryValue: `S: ${calculatedEffectiveMetrics.effectiveDistances.scratch.toFixed(1)}${unitSfx} / B: ${calculatedEffectiveMetrics.effectiveDistances.bogey.toFixed(1)}${unitSfx}`, 
-                                secondaryValue: `Elev: S: ${calculatedEffectiveMetrics.effectiveElevations.scratch.toFixed(1)}${elevSfx} / B: ${calculatedEffectiveMetrics.effectiveElevations.bogey.toFixed(1)}${elevSfx}`, 
-                                points: finalRaterPath, // Add points property to satisfy the interface
-                                raterPathPoints: finalRaterPath, // Store rater's full path here
-                                pivotPoints: currentPivots, // Store typed pivots here
-                                genderRated: ratingGender, // Store the selected gender
-                                effectiveDistances: calculatedEffectiveMetrics.effectiveDistances,
-                                effectiveElevations: calculatedEffectiveMetrics.effectiveElevations,
-                                effectivePaths: calculatedEffectiveMetrics.effectivePaths,
+                                primaryValue: (trkMetrics.dist * distMult).toFixed(1) + unitSfx, 
+                                secondaryValue: `Elev: ${(trkMetrics.elev * elevMult).toFixed(1)}${elevSfx}`, 
+                                points: finalPath, 
+                                pivots: trkPivotsArray,
                                 holeNumber: holeNum
                               }); 
                               setTrkActive(false); 
-                              setShowPivotMenu(false); // Ensure menu is closed on stop track
-                              setPendingPivotType(null); // Clear pending type
                             } 
-                          }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-bold text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
+                          }} className={`${trkActive ? 'flex-1' : 'flex-1'} h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl transition-all active:scale-95 ${trkActive ? 'bg-red-600 border-red-500 text-white' : 'bg-blue-600 border-blue-500 text-white'}`}>{trkActive ? 'STOP TRACK' : 'START TRACK'}</button>
                           {trkActive && (
                             <div className="flex-[1.2] flex gap-2">
-                              <button onClick={() => setShowPivotMenu(true)} disabled={currentPivots.length >= 3} className="flex-1 h-14 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({currentPivots.length})</div></button>
-                              {currentPivots.length > 0 && <button onClick={() => {
-                                setCurrentPivots(prev => prev.slice(0, -1));
-                                setTrkPoints(prev => { // Also remove the last point if it was a pivot
-                                  if (prev.length > 0 && prev[prev.length - 1].timestamp === currentPivots[currentPivots.length - 1].point.timestamp) {
-                                    return prev.slice(0, -1);
-                                  }
-                                  return prev;
-                                });
+                              <button onClick={() => { 
+                                if (trkPivotsArray.length < 6 && pos) {
+                                  setTrkPivotsArray([...trkPivotsArray, pos]);
+                                  setTrkPoints(prev => [...prev, pos]);
+                                }
+                              }} disabled={trkPivotsArray.length >= 6} className="flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-blue-500 text-blue-100 shadow-xl active:scale-95"><div className="flex items-center justify-center gap-2">PIVOT ({trkPivotsArray.length})</div></button>
+                              {trkPivotsArray.length > 0 && <button onClick={() => {
+                                setTrkPivotsArray(prev => prev.slice(0, -1));
+                                setTrkPoints(prev => prev.slice(0, -1));
                               }} className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-full flex items-center justify-center text-slate-400 active:scale-90"><RotateCcw size={18} /></button>}
                             </div>
                           )}
@@ -1782,8 +1387,8 @@ const App: React.FC = () => {
                                   <Minus size={14} />
                                 </button>
                                 <div className="flex flex-col items-center">
-                                  <span className="text-[7px] font-bold uppercase tracking-widest text-white/40">HOLE</span>
-                                  <span className="text-xl font-bold tabular-nums text-emerald-400 leading-none">{holeNum}</span>
+                                  <span className="text-[7px] font-black uppercase tracking-widest text-white/40">HOLE</span>
+                                  <span className="text-xl font-black tabular-nums text-emerald-400 leading-none">{holeNum}</span>
                                 </div>
                                 <button 
                                   onClick={() => setHoleNum(h => Math.min(18, h + 1))}
@@ -1794,8 +1399,8 @@ const App: React.FC = () => {
                               </div>
                             </div>
                           )}
-                          <button onClick={() => { if(mapActive) handleFinalizeGreen(); else { setMapPoints(pos?[pos]:[]); setMapActive(true); setMapCompleted(false); } }} className={`flex-1 h-14 rounded-full font-bold text-xs tracking-[0.2em] uppercase border-2 shadow-xl active:scale-95 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>{mapActive ? 'CLOSE' : 'START GREEN'}</button>
-                          {mapActive && <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-14 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 transition-all shadow-xl ${isBunker ? 'bg-orange-600 border-orange-500 text-white scale-105' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}>BUNKER (HOLD)</button>}
+                          <button onClick={() => { if(mapActive) handleFinalizeGreen(); else { setMapPoints(pos?[pos]:[]); setMapActive(true); setMapCompleted(false); } }} className={`flex-1 h-14 rounded-full font-black text-xs tracking-[0.2em] uppercase border-2 shadow-xl active:scale-95 ${mapActive ? 'bg-blue-600 border-blue-500 text-white' : 'bg-emerald-600 border-emerald-500 text-white'}`}>{mapActive ? 'CLOSE' : 'START GREEN'}</button>
+                          {mapActive && <button onPointerDown={() => setIsBunker(true)} onPointerUp={() => setIsBunker(false)} onPointerLeave={() => setIsBunker(false)} className={`flex-1 h-14 rounded-full font-black text-xs tracking-[0.1em] uppercase border-2 transition-all shadow-xl ${isBunker ? 'bg-orange-600 border-orange-500 text-white scale-105' : 'bg-slate-800 border-orange-500/50 text-orange-400'}`}>BUNKER (HOLD)</button>}
                         </div>
                       </div>
                     )}
@@ -1803,50 +1408,6 @@ const App: React.FC = () => {
                 )}
               </div>
             </div>
-
-            {/* Floating Pivot Selection Menu */}
-            {showPivotMenu && (
-              <div className="absolute inset-x-0 bottom-[160px] z-[1010] p-4 pointer-events-none flex flex-col gap-3 items-center animate-in slide-in-from-bottom duration-200">
-                <div className="pointer-events-auto bg-slate-900/95 border border-white/20 rounded-[2.8rem] p-5 w-full max-w-[300px] shadow-2xl backdrop-blur-md flex flex-col items-center">
-                  <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-3">Set Pivot Type:</span>
-                  <div className="flex gap-2 mb-4 w-full">
-                    <button 
-                      onClick={() => setPendingPivotType('common')}
-                      className={`flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'common' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
-                    >
-                      Both
-                    </button>
-                    <button 
-                      onClick={() => setPendingPivotType('scratch_cut')}
-                      className={`flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'scratch_cut' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
-                    >
-                      Scratch
-                    </button>
-                    <button 
-                      onClick={() => setPendingPivotType('bogey_round')}
-                      className={`flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 transition-all ${pendingPivotType === 'bogey_round' ? 'bg-yellow-600 border-yellow-500 text-white' : 'bg-slate-800 border-white/10 text-slate-400'}`}
-                    >
-                      Bogey
-                    </button>
-                  </div>
-                  <div className="flex gap-2 w-full">
-                    <button 
-                      onClick={handleConfirmPivot} 
-                      disabled={!pendingPivotType}
-                      className="flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 bg-blue-600 border-blue-500 text-white shadow-xl active:scale-95 disabled:opacity-30 disabled:grayscale transition-all"
-                    >
-                      Confirm Pivot
-                    </button>
-                    <button 
-                      onClick={handleCancelPivot} 
-                      className="flex-1 h-12 rounded-full font-bold text-xs tracking-[0.1em] uppercase border-2 bg-slate-800 border-slate-700/50 text-slate-400 shadow-xl active:scale-95"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
